@@ -23,7 +23,7 @@ export function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 md:top-5 z-50 p-2 md:p-2 w-full bg-white dark:bg-black border-b md:border-b-0 border-gray-200 dark:border-gray-800">
+    <nav className="sticky top-0 md:top-5 z-50 p-2 md:p-2 w-full bg-white dark:bg-[#0c0c0c] border-b md:border-b-0 border-gray-200 dark:border-gray-800">
       <div className="flex h-14 md:h-16 items-center justify-between px-4 md:px-8 w-full">
         <div className="flex items-center">
           {/* Logo */}
