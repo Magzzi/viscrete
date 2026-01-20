@@ -44,7 +44,7 @@ export default function Home() {
         </section>
 
         {/* Get Started Section */}
-        <section className="mt-32 md:mt-40 lg:mt-48 px-4 md:px-8">
+        <section className="mt-32 md:mt-40 lg:mt-48 px-8 md:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Left Side - Text */}
             <div className="text-center lg:text-left">
