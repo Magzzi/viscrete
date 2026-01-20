@@ -32,11 +32,11 @@ export default function Home() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mt-4">
-              <Button size="lg" className="cursor-pointer bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 px-8 py-6 text-lg">
+              <Button size="lg" className="transform transition duration-500 hover:scale-105 cursor-pointer bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 px-8 py-6 text-lg">
                 Start Inspection
-                <ChevronRightIcon className="ml-2 h-6 w-6" />
+                <ChevronRightIcon className="h-6 w-6" />
               </Button>
-              <Button size="lg" variant="outline" className="cursor-pointer border-black dark:border-white text-black dark:text-white hover:bg-gray-100 dark:hover:bg-gray-900 px-8 py-6 text-lg">
+              <Button size="lg" variant="outline" className="transform transition duration-500 hover:scale-105 cursor-pointer border-black dark:border-white text-black dark:text-white hover:bg-gray-100 dark:hover:bg-gray-900 px-8 py-6 text-lg">
                 See How It Works
               </Button>
             </div>

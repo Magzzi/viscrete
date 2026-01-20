@@ -34,7 +34,7 @@ export function Navbar() {
           width={100}
           height={33}
           priority
-          className="md:w-[150px] md:h-[50px]"
+          className="transform transition duration-500 hover:scale-105 md:w-[150px] md:h-[50px]"
           />
           ) : (
             <Image
@@ -43,7 +43,7 @@ export function Navbar() {
             width={100}
             height={33}
             priority
-            className="md:w-[150px] md:h-[50px]"
+            className="transform transition duration-500 hover:scale-105 md:w-[150px] md:h-[50px]"
             />
           )
           }
