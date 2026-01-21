@@ -43,6 +43,27 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Other Info */}
+        
+        <section className="relative z-10 flex mt-12 max-w-3xl mx-auto opacity-100">
+          <div className="flex max-w-3xl mx-auto gap-x-12">
+            <div className="flex-1 text-center">
+              <div className="text-2xl md:text-3xl font-bold text-black dark:text-white">1,000+</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Images Analyzed</div>
+            </div>
+            <div className="w-px bg-gray-300 dark:bg-gray-700"></div>
+            <div className="flex-1 text-center">
+              <div className="text-2xl md:text-3xl font-bold text-black dark:text-white">10+</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Infrastructure Samples Evaluated</div>
+            </div>
+            <div className="w-px bg-gray-300 dark:bg-gray-700"></div>
+            <div className="flex-1 text-center">
+              <div className="text-2xl md:text-3xl font-bold text-black dark:text-white">92%</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Detection Accuracy</div>
+            </div>
+          </div>
+        </section>
+
         {/* Get Started Section */}
         <section className="mt-32 md:mt-40 lg:mt-48 px-8 md:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
