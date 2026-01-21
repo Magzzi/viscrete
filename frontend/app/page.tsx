@@ -75,7 +75,7 @@ export default function Home() {
         <Features/>
 
         {/* Get Started Section */}
-        <section className="mt-8 md:mt-12 lg:mt-48 px-8 md:px-12">
+        <section className="mt-8 md:mt-12 lg:mt-48 py-8 md:py-12 px-8 md:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Left Side - Text */}
             <div className="text-center lg:text-left">
