@@ -2,6 +2,8 @@
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
+import Details from "@/components/ui/details";
+import Features from "@/components/ui/features";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
 export default function Home() {
@@ -48,6 +50,7 @@ export default function Home() {
 
         {/* Other Info */}
         
+        
         <section className="relative z-10 flex mt-12 max-w-3xl mx-auto opacity-100">
           <div className="flex max-w-3xl mx-auto gap-x-12">
             <div className="flex-1 text-center">
@@ -67,8 +70,12 @@ export default function Home() {
           </div>
         </section>
 
+        <Details/>
+
+        <Features/>
+
         {/* Get Started Section */}
-        <section className="mt-32 md:mt-40 lg:mt-48 px-8 md:px-12">
+        <section className="mt-8 md:mt-12 lg:mt-48 px-8 md:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Left Side - Text */}
             <div className="text-center lg:text-left">

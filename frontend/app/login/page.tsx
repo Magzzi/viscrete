@@ -22,7 +22,7 @@ export default function LoginPage() {
           src="/login-background.png"
           alt="Login visual"
           fill
-          className="object-cover"
+          className="object-cover w-full h-full"
           priority
         />
       </div>
@@ -91,7 +91,7 @@ export default function LoginPage() {
             {/* Sign In Button */}
             <button
               onClick={handleSignIn}
-              className="w-full rounded-lg bg-primary px-4 py-3 text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+              className="transform transition duration-500 hover:scale-105 w-full rounded-lg bg-primary px-4 py-3 text-primary-foreground font-medium hover:bg-primary/90 cursor-pointer"
             >
               Sign in
             </button>
