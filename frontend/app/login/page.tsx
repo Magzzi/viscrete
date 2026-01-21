@@ -17,13 +17,13 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen">
       {/* Left side - Image */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gray-100">
-        <img
+      <div className="lg:flex lg:w-1/2 relative bg-gray-100">
+        <Image
           src="/login-background.png"
           alt="Login visual"
-          
+          fill
           className="object-cover"
-          
+          priority
         />
       </div>
 
