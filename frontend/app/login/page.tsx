@@ -1,7 +1,7 @@
 'use client';
-
 import Link from 'next/link';
 import { useState } from 'react';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,82 +15,91 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-black">
+    <div className="flex min-h-screen">
       {/* Left side - Image */}
-      <div
-        className="hidden w-1/2 bg-cover bg-center lg:block"
-        style={{
-          backgroundImage: 'url(/login-background.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        {/* Logo in top left */}
-        <div className="p-8">
-          <h1 className="text-2xl font-bold text-white">viscrete</h1>
-        </div>
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gray-100">
+        <img
+          src="/login-background.png"
+          alt="Login visual"
+          
+          className="object-cover"
+          
+        />
       </div>
 
       {/* Right side - Login Form */}
-      <div className="flex w-full flex-col items-center justify-center px-8 lg:w-1/2">
-        <div className="w-full max-w-sm">
-          <h2 className="mb-12 text-5xl font-bold text-white">Welcome Back</h2>
+      <div className="flex w-full lg:w-1/2 items-center justify-center p-8">
+        <div className="w-full max-w-md space-y-8">
+          {/* Logo */}
+          <div className="absolute top-8 left-8 lg:left-auto lg:relative lg:top-0">
+            <Link href="/" className="text-2xl font-bold text-foreground">
+              viscrete
+            </Link>
+          </div>
 
-          <form onSubmit={handleSignIn} className="space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Welcome Back</h1>
+          </div>
+
+          <div className="space-y-6">
             {/* Email Field */}
-            <div>
-              <label className="mb-2 block text-sm font-medium text-white">Email</label>
+            <div className="space-y-2">
+              <label htmlFor="email" className="block text-sm font-medium text-foreground">
+                Email
+              </label>
               <input
+                id="email"
                 type="email"
-                placeholder="Enter your email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-white bg-transparent px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white"
+                className="w-full rounded-lg border border-input bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
 
             {/* Password Field */}
-            <div>
-              <label className="mb-2 block text-sm font-medium text-white">Password</label>
+            <div className="space-y-2">
+              <label htmlFor="password" className="block text-sm font-medium text-foreground">
+                Password
+              </label>
               <input
+                id="password"
                 type="password"
-                placeholder="Enter your password"
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-white bg-transparent px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white"
+                className="w-full rounded-lg border border-input bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
 
             {/* Remember me & Forgot password */}
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 rounded border border-white bg-transparent accent-white"
+                  className="h-4 w-4 rounded border border-input bg-background accent-foreground"
                 />
-                <span className="text-sm text-white">Remember me</span>
+                <span className="text-sm text-foreground">Remember me</span>
               </label>
-              <Link href="/forgot-password" className="text-sm text-white hover:text-gray-300">
+              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
                 Forgot password?
               </Link>
             </div>
 
             {/* Sign In Button */}
             <button
-              type="submit"
-              className="w-full rounded-lg bg-white py-3 font-semibold text-black hover:bg-gray-200 transition-colors"
+              onClick={handleSignIn}
+              className="w-full rounded-lg bg-primary px-4 py-3 text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
             >
               Sign in
             </button>
-          </form>
 
-          {/* Sign up link */}
-          <div className="mt-8 border-t border-gray-600 pt-8 text-center">
-            <p className="text-sm text-gray-400">
+            {/* Sign up link */}
+            <p className="text-center text-sm text-muted-foreground">
               Don't have an account?{' '}
-              <Link href="/signup" className="text-white hover:text-gray-300">
+              <Link href="/signup" className="text-primary font-medium hover:underline">
                 Sign up
               </Link>
             </p>

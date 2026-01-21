@@ -26,6 +26,7 @@ export function Navbar() {
     <nav className="sticky top-0 md:top-0 z-50 p-2 md:p-2 w-full bg-white dark:bg-[#0c0c0c] border-b md:border-b-0 border-gray-200 dark:border-gray-800">
       <div className="flex h-14 md:h-16 items-center justify-between px-4 md:px-8 w-full">
         <div className="flex items-center">
+          <a href="/">
           {/* Logo */}
           {theme === "dark" ? (
             <Image
@@ -34,6 +35,7 @@ export function Navbar() {
           width={100}
           height={33}
           priority
+          
           className="transform transition duration-500 hover:scale-105 md:w-[150px] md:h-[50px]"
           />
           ) : (
@@ -47,7 +49,7 @@ export function Navbar() {
             />
           )
           }
-          
+          </a>
         </div>
 
         {/* Theme Toggle */}

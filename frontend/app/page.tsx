@@ -1,12 +1,13 @@
-import { Navbar } from "@/components/navbar";
+
 import Image from "next/image";
+
 import { Button } from "@/components/ui/button";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-[white] dark:bg-[#0c0c0c]">
-      <Navbar />
+      
       
       <main className="container mx-auto px-4 py-8">
         <div className="absolute inset-0 bg-white dark:bg-[#0c0c0c]">
@@ -32,10 +33,12 @@ export default function Home() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mt-4">
-              <Button size="lg" className="transform transition duration-500 hover:scale-105 cursor-pointer bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 px-8 py-6 text-lg">
-                Start Inspection
-                <ChevronRightIcon className="h-6 w-6" />
-              </Button>
+                <Button size="lg" className="transform transition duration-500 hover:scale-105 cursor-pointer bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 px-8 py-6 text-lg" asChild>
+                <a href="/login">
+                  Start Inspection
+                  <ChevronRightIcon className="h-6 w-6" />
+                </a>
+                </Button>
               <Button size="lg" variant="outline" className="transform transition duration-500 hover:scale-105 cursor-pointer border-black dark:border-white text-black dark:text-white hover:bg-gray-100 dark:hover:bg-gray-900 px-8 py-6 text-lg">
                 See How It Works
               </Button>
