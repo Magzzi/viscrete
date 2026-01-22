@@ -56,7 +56,7 @@ const Details = () => {
             <img 
                 src="/viscrete-dark.svg" 
                 alt="Viscrete" 
-                className="inline-block h-20 w-auto align-middle dark:block hidden"
+                className="inline-block h-20 w-auto align-middle not-dark:hidden"
             />
             <img 
                 src="/viscrete-light.svg" 
