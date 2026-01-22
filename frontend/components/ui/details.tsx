@@ -1,50 +1,51 @@
 import {
-  Blocks,
-  Bot,
-  ChartPie,
-  Film,
-  MessageCircle,
-  Settings2,
+  Brain,
+  Camera,
+  Drone,
+  Layers,
+  MapPinned,
+  Users,
 } from "lucide-react";
 
 const features = [
   {
-    icon: Settings2,
-    title: "Customizable Layouts",
+    icon: Brain,
+    title: "YOLO-Based Defect Detection",
     description:
-      "Design your space with drag-and-drop simplicity—create grids, lists, or galleries in seconds.",
+      "Automatically detects concrete surface defects such as cracks, spalling, and exposed rebars using YOLO-based deep learning models.",
   },
   {
-    icon: Blocks,
-    title: "Interactive Widgets",
+    icon: Camera,
+    title: "Image & Video Processing",
     description:
-      "Embed polls, quizzes, or forms to keep your audience engaged.",
+      "Processes images and video feeds from cameras or drones using computer vision and traditional image processing techniques.",
   },
   {
-    icon: Bot,
-    title: "AI-Powered Tools",
+    icon: Drone,
+    title: "Drone & Mobile Integration",
     description:
-      "Generate summaries, auto-format content, or translate into multiple languages seamlessly.",
+      "Supports aerial and handheld data capture for inspecting hard-to-reach concrete structures like bridges, railways, and buildings.",
   },
   {
-    icon: Film,
-    title: "Media Integrations",
+    icon: Layers,
+    title: "Defect Classification & Analysis",
     description:
-      "Connect with Spotify, Instagram, or your own media library for dynamic visuals and sound.",
+      "Classifies detected defects by type and severity to assist engineers in prioritizing maintenance and structural assessment.",
   },
   {
-    icon: ChartPie,
-    title: "Advanced Analytics",
+    icon: MapPinned,
+    title: "Geotagged Inspection Records",
     description:
-      "Track engagement, clicks, and user activity with intuitive charts and reports.",
+      "Stores detected defects with location data, timestamps, and visual evidence for inspection tracking and documentation.",
   },
   {
-    icon: MessageCircle,
-    title: "Seamless Collaboration",
+    icon: Users,
+    title: "Engineer-Centered Workflow",
     description:
-      "Comment, tag, and assign tasks directly within your documents.",
+      "Designed to assist civil engineers by reducing manual inspection effort while improving safety, consistency, and accuracy.",
   },
 ];
+
 
 const Details = () => {
   return (
