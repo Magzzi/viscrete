@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import Details from "@/components/ui/details";
 import Features from "@/components/ui/features";
+import Download from "@/components/ui/download";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
 export default function Home() {
@@ -74,59 +75,7 @@ export default function Home() {
 
         <Features/>
 
-        {/* Get Started Section */}
-        <section className="mt-8 md:mt-12 lg:mt-48 py-8 md:py-12 px-8 md:px-12">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            {/* Left Side - Text */}
-            <div className="text-center lg:text-left">
-              <h2 className="text-5xl md:text-6xl lg:text-7xl font-bold text-black dark:text-white">
-                Lets get<br />you started!
-              </h2>
-            </div>
-
-            {/* Right Side - Download Card */}
-            <div className="bg-black dark:bg-white rounded-3xl p-8 md:p-10 lg:p-12">
-              <div className="flex items-center justify-center lg:justify-start mb-6">
-                <Image
-                  src="/viscrete-dark.svg"
-                  alt="VISCRETE"
-                  width={180}
-                  height={60}
-                  priority
-                  className="dark:hidden"
-                />
-                <Image
-                  src="/viscrete-light.svg"
-                  alt="VISCRETE"
-                  width={180}
-                  height={60}
-                  priority
-                  className="hidden dark:block"
-                />
-              </div>
-              
-              <h3 className="text-4xl md:text-5xl font-bold text-white dark:text-black mb-3">
-                Download
-              </h3>
-              
-              <p className="text-lg md:text-xl text-white dark:text-black mb-8">
-                Fully optimized for Windows Devices
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button 
-                  size="lg" 
-                  className="cursor-pointer bg-white dark:bg-black text-black dark:text-white hover:bg-gray-100 dark:hover:bg-gray-900 px-6 py-6 text-base font-medium"
-                >
-                  <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
-                  </svg>
-                  Windows 11 (64-bit)
-                </Button>
-              </div>
-            </div>
-          </div>
-        </section>
+        <Download/>
         
       </main>
     </div>
