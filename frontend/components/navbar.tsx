@@ -30,14 +30,13 @@ export function Navbar() {
           {/* Logo */}
           {theme === "dark" ? (
             <Image
-          src="/viscrete-dark.svg"
-          alt="VISCRETE"
-          width={100}
-          height={33}
-          priority
-          
-          className="transform transition duration-500 hover:scale-105 md:w-[150px] md:h-[50px]"
-          />
+            src="/viscrete-dark.svg"
+            alt="VISCRETE"
+            width={100}
+            height={33}
+            priority
+            className="light:hidden transform transition duration-500 hover:scale-105 md:w-[150px] md:h-[50px]"
+            />
           ) : (
             <Image
             src="/viscrete-light.svg"
@@ -45,7 +44,7 @@ export function Navbar() {
             width={100}
             height={33}
             priority
-            className="transform transition duration-500 hover:scale-105 md:w-[150px] md:h-[50px]"
+            className="dark:hidden transform transition duration-500 hover:scale-105 md:w-[150px] md:h-[50px]"
             />
           )
           }

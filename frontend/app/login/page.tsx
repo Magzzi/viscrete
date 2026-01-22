@@ -15,7 +15,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen overflow-hidden">
       {/* Left side - Image */}
       <div className="lg:flex lg:w-1/2 relative bg-gray-100">
         <Image

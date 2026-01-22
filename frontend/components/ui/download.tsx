@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 
 export default function Download() {
   return (
-    <section className="mt-8 md:mt-12 lg:mt-24 py-6 md:py-8 px-6 md:px-8">
+    <section className="mt-4 md:mt-6 lg:mt-12 py-6 md:py-8 px-6 md:px-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-center max-w-5xl mx-auto">
         {/* Left Side - Text */}
         <div className="text-center lg:text-left">

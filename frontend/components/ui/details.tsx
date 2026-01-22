@@ -48,7 +48,7 @@ const features = [
 
 const Details = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center py-12">
+    <div id="details" className="min-h-screen flex items-center justify-center py-12">
       <div>
         <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight text-center">
           The Technology Behind <span>
