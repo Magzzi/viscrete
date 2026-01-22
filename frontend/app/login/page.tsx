@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import Image from 'next/image';
+import { ArrowLeft } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -31,11 +32,12 @@ export default function LoginPage() {
       <div className="flex w-full lg:w-1/2 items-center justify-center p-8">
         <div className="w-full max-w-md space-y-8">
           {/* Logo */}
-          <div className="absolute top-8 left-8 lg:left-auto lg:relative lg:top-0">
-            <Link href="/" className="text-2xl font-bold text-foreground">
-              viscrete
-            </Link>
-          </div>
+            <div className="transform transition duration-500 hover:scale-105 flex top-4 left-4 z-50 lg:relative lg:top-0 lg:left-0 max-w-fit">
+              <Link href="/" className="flex items-center gap-2 bg-black dark:bg-white px-3 py-2 lg:px-4 rounded-2xl text-white dark:text-black hover:opacity-80 shadow-md lg:shadow-none">
+                <ArrowLeft className="w-4 h-4 lg:w-5 lg:h-5" />
+                <span className="text-xs lg:text-sm font-medium">Return</span>
+              </Link>
+            </div>
 
           <div className="space-y-2">
             <h1 className="text-3xl font-bold tracking-tight">Welcome Back</h1>
