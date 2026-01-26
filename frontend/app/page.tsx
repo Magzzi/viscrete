@@ -1,8 +1,9 @@
 
-import Hero from "@/components/ui/hero";
-import Details from "@/components/ui/details";
-import Features from "@/components/ui/features";
-import Download from "@/components/ui/download";
+import Hero from "@/components/hero";
+import Details from "@/components/details";
+import Features from "@/components/features";
+import Download from "@/components/download";
+import FileUpload from "@/components/file-upload";
 
 export default function Home() {
   return (
@@ -41,8 +42,9 @@ export default function Home() {
 
         <Features/>
 
-        <Download/>
+        {/* <Download/> */}
         
+        <FileUpload/>
       </main>
     </div>
   );
