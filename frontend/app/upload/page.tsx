@@ -215,12 +215,12 @@ export default function UploadPage() {
                   <div className="flex gap-3">
                     <Button
                       variant="outline"
-                      className="border-gray-300 dark:border-gray-600"
+                      className="cursor-pointer border-gray-300 dark:border-gray-600"
                     >
                       Cancel
                     </Button>
                     <Button
-                      className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
+                      className="cursor-pointer bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
                       onClick={handleContinue}
                     >
                       Continue
