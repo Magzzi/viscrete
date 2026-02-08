@@ -244,7 +244,7 @@ export default function UploadPage() {
                     type="text"
                     placeholder="Enter Keyword"
                     value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchKeyword(e.target.value)}
                     className="pl-10 border-gray-300 dark:border-gray-600 w-full sm:w-48"
                   />
                 </div>
