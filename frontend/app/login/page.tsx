@@ -26,7 +26,7 @@ export default function LoginPage() {
 
       // Add a short delay before redirecting
       setTimeout(() => {
-        router.push('/upload-image');
+        router.push('/upload');
       }, 600);
     } else {
       setError('Invalid email or password');
