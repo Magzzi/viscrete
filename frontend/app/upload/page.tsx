@@ -13,9 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { HelpCircle, Upload, Search, MapPin, Trash2 } from "lucide-react";
+import { HelpCircle, Upload, Search, MapPin, Trash2, Loader2 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from 'next/navigation';
+import { Navbar } from "@/components/navbar";
 
 interface PreviousReport {
   id: string;
@@ -33,11 +34,41 @@ export default function UploadPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [fileType, setFileType] = useState<'image' | 'video'>('image');
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Clear uploaded files when file type changes
   useEffect(() => {
     setUploadedFiles([]);
+    setUploadProgress({});
+    setIsUploading(false);
+    setUploadError(null);
   }, [fileType]);
+
+  // UPLOAD CONSTRAINTS
+  const MAX_IMAGES = 100;
+  const MAX_TOTAL_IMAGE_SIZE = 300 * 1024 * 1024; // 300 MB
+  const MAX_VIDEO_SIZE = 200 * 1024 * 1024; // 200 MB
+  const MAX_VIDEO_DURATION = 60; // 60 seconds
+
+  const getVideoDuration = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        resolve(video.duration);
+      };
+      
+      video.onerror = () => {
+        reject(new Error('Failed to load video metadata'));
+      };
+      
+      video.src = URL.createObjectURL(file);
+    });
+  };
 
   // Mock previous reports data
   const previousReports: PreviousReport[] = [
@@ -69,12 +100,77 @@ export default function UploadPage() {
     handleFileSelect(e.dataTransfer.files);
   };
 
-  const handleFileSelect = (files: FileList | null) => {
+  const handleFileSelect = async (files: FileList | null) => {
     if (!files) return;
+    setUploadError(null);
+    
     const newFiles = Array.from(files).filter((file) =>
       file.type.startsWith(fileType === 'image' ? "image/" : "video/")
     );
+    
+    if (newFiles.length === 0) return;
+    
+    // Validate based on file type
+    if (fileType === 'image') {
+      // Check image count limit
+      const totalImages = uploadedFiles.length + newFiles.length;
+      if (totalImages > MAX_IMAGES) {
+        setUploadError(`Maximum ${MAX_IMAGES} images allowed. You are trying to upload ${totalImages} images.`);
+        return;
+      }
+      
+      // Check total size limit
+      const currentTotalSize = uploadedFiles.reduce((sum, file) => sum + file.size, 0);
+      const newTotalSize = newFiles.reduce((sum, file) => sum + file.size, 0);
+      const totalSize = currentTotalSize + newTotalSize;
+      
+      if (totalSize > MAX_TOTAL_IMAGE_SIZE) {
+        const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+        setUploadError(`Total image size cannot exceed 300 MB. Current total would be ${totalSizeMB} MB.`);
+        return;
+      }
+    } else if (fileType === 'video') {
+      // Check individual video file sizes and durations
+      for (const file of newFiles) {
+        // Check file size
+        if (file.size > MAX_VIDEO_SIZE) {
+          const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+          setUploadError(`Video "${file.name}" is ${fileSizeMB} MB. Maximum video size is 200 MB.`);
+          return;
+        }
+        
+        // Check video duration
+        try {
+          const duration = await getVideoDuration(file);
+          if (duration > MAX_VIDEO_DURATION) {
+            setUploadError(`Video "${file.name}" is ${Math.round(duration)} seconds. Maximum duration is 60 seconds.`);
+            return;
+          }
+        } catch (error) {
+          setUploadError(`Failed to validate video "${file.name}". Please try again.`);
+          return;
+        }
+      }
+    }
+    
+    setIsUploading(true);
     setUploadedFiles((prev) => [...prev, ...newFiles]);
+    
+    // Simulate file upload with progress
+    for (const file of newFiles) {
+      const fileId = `${file.name}-${file.size}`;
+      
+      // Simulate upload progress
+      for (let progress = 0; progress <= 100; progress += 10) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        setUploadProgress((prev) => ({
+          ...prev,
+          [fileId]: progress
+        }));
+      }
+    }
+    
+    setIsUploading(false);
   };
 
   const handleBrowseClick = () => {
@@ -90,9 +186,18 @@ export default function UploadPage() {
   };
 
   const handleDeleteFile = (indexToDelete: number) => {
+    const fileToDelete = uploadedFiles[indexToDelete];
+    const fileId = `${fileToDelete.name}-${fileToDelete.size}`;
+    
     setUploadedFiles((prev) =>
       prev.filter((_, index) => index !== indexToDelete)
     );
+    
+    setUploadProgress((prev) => {
+      const updated = { ...prev };
+      delete updated[fileId];
+      return updated;
+    });
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -127,7 +232,7 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0c0c0c]">
-      
+      <Navbar/>
 
       {/* Welcome Section */}
       <div className="container mx-auto px-4 py-6">
@@ -225,14 +330,69 @@ export default function UploadPage() {
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     or click to browse ({fileType === 'image' ? 'images only' : 'videos only'})
                   </p>
+                  {fileType === 'image' ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                      Max {MAX_IMAGES} images, 300 MB total
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                      Max 1 min/video, 200 MB each
+                    </p>
+                  )}
                 </div>
 
-                {/* Uploaded Files Count */}
-                {uploadedFiles.length > 0 && (
-                  <div className="mt-4 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded">
-                    <p className="text-sm text-green-700 dark:text-green-300">
-                      {uploadedFiles.length} {fileType === 'image' ? 'image(s)' : 'video(s)'} selected
+                {/* Upload Error */}
+                {uploadError && (
+                  <div className="mt-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded">
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      ⚠ {uploadError}
                     </p>
+                  </div>
+                )}
+
+                {/* Upload Status */}
+                {uploadedFiles.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    {isUploading ? (
+                      <div className="p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
+                          <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                            Uploading {fileType === 'image' ? 'images' : 'videos'}...
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          {uploadedFiles.map((file, index) => {
+                            const fileId = `${file.name}-${file.size}`;
+                            const progress = uploadProgress[fileId] || 0;
+                            return (
+                              <div key={index} className="space-y-1">
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="text-blue-700 dark:text-blue-300 truncate max-w-[200px]">
+                                    {file.name}
+                                  </span>
+                                  <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                    {progress}%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-blue-100 dark:bg-blue-900 rounded-full h-1.5">
+                                  <div
+                                    className="bg-blue-600 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-300"
+                                    style={{ width: `${progress}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded">
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          ✓ {uploadedFiles.length} {fileType === 'image' ? 'image(s)' : 'video(s)'} uploaded successfully
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -250,10 +410,18 @@ export default function UploadPage() {
                       Cancel
                     </Button>
                     <Button
-                      className="cursor-pointer bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
+                      className="cursor-pointer bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={handleContinue}
+                      disabled={isUploading}
                     >
-                      Continue
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        'Continue'
+                      )}
                     </Button>
                   </div>
                 </div>
