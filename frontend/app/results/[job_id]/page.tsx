@@ -57,7 +57,7 @@ export default function ResultPage() {
         <div className='flex flex-col min-h-screen overflow-hidden'>
             {/* HEADER */}
             <header className="bg-black dark:bg-black border-b border-gray-800">
-                <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+                <div className="container mx-4 px-4 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button className="text-white hover:text-gray-300 transition-colors cursor-pointer">
                             <ArrowLeft className="w-6 h-6" />
@@ -70,7 +70,7 @@ export default function ResultPage() {
                             </p>
                         </div>
                     </div>
-                    <div className='flex flex-row gap-4 items-center'>
+                    <div className='flex flex-row gap-4 items-center justify-end'>
                         <h3 className='p-2 text-gray-400'>
                             <span className="flex items-center gap-1">
                                 <SettingsIcon fontSize="small" />
