@@ -153,7 +153,9 @@ export default function UploadReviewPage() {
               </p>
             </div>
           </div>
-          <Button className="bg-white text-black hover:bg-gray-100 font-medium cursor-pointer">
+          <Button className="bg-white text-black hover:bg-gray-100 font-medium cursor-pointer" onClick={() => {
+            router.push(`/results/${jobId}`);
+          }}>
             Proceed to Analysis
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>

@@ -2,7 +2,7 @@
 
 // REACT
 import { useParams } from 'next/navigation';
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, use } from "react";
 
 // MUI
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -33,18 +33,12 @@ import {
 
 export default function ResultPage() {
     const params = useParams();
-    const jobId = params.job_id;
+    const jobId = params.job_id as string;
 
     // Project Validity
     const [isValidProject, setIsValidProject] = useState(true);
 
-    useEffect(() => {
-        // Here you would typically fetch project data using the jobId
-        // For demonstration, we'll assume the project is valid if jobId is "valid-job"
-        if (jobId !== "valid-job") {
-            setIsValidProject(false);
-        }
-    }, [jobId]);
+    
 
     // Results
     const [result, setResult] = useState(null);
@@ -55,6 +49,41 @@ export default function ResultPage() {
     const [peelingCount, setPeelingCount] = useState(0);
     const [algaeCount, setAlgaeCount] = useState(0);
     const [stainCount, setStainCount] = useState(0);
+
+    useEffect(() => {
+        // Here you would typically fetch project data using the jobId
+        // For demonstration, we'll assume the project is valid if jobId is "valid-job"
+        if (jobId !== "valid-job") {
+            setIsValidProject(false);
+        }
+    }, [jobId]);
+
+
+    // Fetch results from API
+    useEffect(() => {
+        const fetchResults = async () => {
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/detect?job_id=${encodeURIComponent(jobId)}`);
+
+                
+                 if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Failed to fetch images' }));
+                    throw new Error(errorData.detail || `HTTP ${response.status}: Failed to fetch images`);
+                 };
+
+                const data = await response.json();
+                setResult(data);
+                console.log('API Response:', data);
+            } catch (error) {
+                console.error('Error fetching results:', error);
+            };
+        }
+        
+        // TODO: Update state with actual results from API
+        // setTotalDefectCount, setCracksCount, setSpallingCount, setPeelingCount, setAlgaeCount, setStainCount
+        
+        fetchResults();
+    }, [jobId]);
 
     // Project Info
     const [projectDate, setProjectDate] = useState("February 10, 2026; 6:07 PM");
