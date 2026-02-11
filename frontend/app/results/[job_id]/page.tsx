@@ -81,6 +81,12 @@ export default function ResultPage() {
                 // Set Total Count of Defects
                  
                 setTotalDefectCount(data.total_defect_count);
+                setCracksCount(data.total_defect_counts.cracks);
+                setSpallingCount(data.total_defect_counts.spalling);
+                setPeelingCount(data.total_defect_counts.peeling);
+                setAlgaeCount(data.total_defect_counts.algae);
+                setStainCount(data.total_defect_counts.staining);
+
                 
             } catch (error) {
                 console.error('Error fetching results:', error);
@@ -221,31 +227,31 @@ export default function ResultPage() {
 
                         {/* Cracks */}
                         <div className='bg-red-950/30 border border-red-900/50 rounded-lg p-4'>
-                            <div className='text-red-400 text-3xl font-bold mb-1'>0</div>
+                            <div className='text-red-400 text-3xl font-bold mb-1'>{cracksCount ? cracksCount : 0}</div>
                             <div className='text-red-300 text-sm'>Cracks</div>
                         </div>
 
                         {/* Spalling */}
                         <div className='bg-yellow-950/30 border border-yellow-900/50 rounded-lg p-4'>
-                            <div className='text-yellow-400 text-3xl font-bold mb-1'>0</div>
+                            <div className='text-yellow-400 text-3xl font-bold mb-1'>{spallingCount ? spallingCount : 0}</div>
                             <div className='text-yellow-300 text-sm'>Spalling</div>
                         </div>
 
                         {/* Peeling */}
                         <div className='bg-orange-950/30 border border-orange-900/50 rounded-lg p-4'>
-                            <div className='text-orange-400 text-3xl font-bold mb-1'>0</div>
+                            <div className='text-orange-400 text-3xl font-bold mb-1'>{peelingCount ? peelingCount : 0}</div>
                             <div className='text-orange-300 text-sm'>Peeling</div>
                         </div>
 
                         {/* Algae */}
                         <div className='bg-green-950/30 border border-green-900/50 rounded-lg p-4'>
-                            <div className='text-green-400 text-3xl font-bold mb-1'>0</div>
+                            <div className='text-green-400 text-3xl font-bold mb-1'>{algaeCount ? algaeCount : 0}</div>
                             <div className='text-green-300 text-sm'>Algae</div>
                         </div>
 
                         {/* Stain */}
                         <div className='bg-purple-950/30 border border-purple-900/50 rounded-lg p-4'>
-                            <div className='text-purple-400 text-3xl font-bold mb-1'>0</div>
+                            <div className='text-purple-400 text-3xl font-bold mb-1'>{stainCount ? stainCount : 0}</div>
                             <div className='text-purple-300 text-sm'>Stain</div>
                         </div>
                     </div>
