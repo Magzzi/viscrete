@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import detect as YOLODetect
 from api.routes import validate_image as ValidateImage
 from api.routes import upload_image as UploadImage
+from api.routes import fetch_image as FetchImage
 
 # Other imports
 from typing import List
@@ -36,3 +37,4 @@ jobs_db = {}
 app.include_router(YOLODetect.router, prefix="/api")
 app.include_router(ValidateImage.router, prefix="/api")
 app.include_router(UploadImage.router, prefix="/api")
+app.include_router(FetchImage.router, prefix="/api")    

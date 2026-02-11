@@ -26,6 +26,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
+type Result = {
+    filename: string;
+    defect_counts: {
+        cracks: number;
+        spalling: number;
+        peeling: number;
+        algae: number;
+        staining: number;
+    };
+    total_defects: number;
+};
 
 
 
@@ -41,14 +52,17 @@ export default function ResultPage() {
     
 
     // Results
-    const [result, setResult] = useState(null);
-    const [riskScore, setRiskScore] = useState(null);
-    const [totalDefectCount , setTotalDefectCount] = useState(null);
-    const [cracksCount, setCracksCount] = useState(0);
-    const [spallingCount, setSpallingCount] = useState(0);
-    const [peelingCount, setPeelingCount] = useState(0);
-    const [algaeCount, setAlgaeCount] = useState(0);
-    const [stainCount, setStainCount] = useState(0);
+    const [results, setResults] = useState<Result[] | null>(null);
+    const [riskScore, setRiskScore] = useState<number | null>(null);
+    const [totalDefectCount , setTotalDefectCount] = useState<number | null>(null);
+    const [cracksCount, setCracksCount] = useState<number>(0);
+    const [spallingCount, setSpallingCount] = useState<number>(0);
+    const [peelingCount, setPeelingCount] = useState<number>(0);    
+    const [algaeCount, setAlgaeCount] = useState<number>(0);
+    const [stainCount, setStainCount] = useState<number>(0);
+
+    const [resultImagesUrls, setResultImagesUrls] = useState<string[]>([]);
+    const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
     useEffect(() => {
         // Here you would typically fetch project data using the jobId
@@ -72,7 +86,7 @@ export default function ResultPage() {
                  };
 
                 const data = await response.json();
-                setResult(data);
+                setResults(data.results);
                 console.log('API Response:', data);
 
                 // TODO: Update state with actual results from API
@@ -87,6 +101,26 @@ export default function ResultPage() {
                 setAlgaeCount(data.total_defect_counts.algae);
                 setStainCount(data.total_defect_counts.staining);
 
+                // Get Images
+                const imagesURLs = data.results.map((result: Result) => result.filename);
+                setResultImagesUrls(imagesURLs);
+                const imagesDataAPI = `http://127.0.0.1:8000/api/get_image?job_id=${encodeURIComponent(jobId)}&image_name=`;
+
+                // iterate each images urls
+                const validImages: string[] = [];
+                for (const imageURL of imagesURLs) {
+                    try {
+                        const imgResponse = await fetch(`${imagesDataAPI}${encodeURIComponent(imageURL)}`);
+                        if (!imgResponse.ok) {
+                            throw new Error(`HTTP ${imgResponse.status}: Failed to fetch image`);
+                        }
+                        const blob = await imgResponse.blob();
+                        validImages.push(URL.createObjectURL(blob));
+                    } catch (imgError) {
+                        console.error('Error fetching image:', imgError);
+                    }
+                }
+                setResultImagesUrls(validImages);
                 
             } catch (error) {
                 console.error('Error fetching results:', error);
@@ -102,12 +136,21 @@ export default function ResultPage() {
     const [projectDate, setProjectDate] = useState("February 10, 2026; 6:07 PM");
     const [projectName, setProjectName] = useState("Construction Site 1 Upper Deck");
     const [modelName, setModelName] = useState("YOLOv11-STRUCTURAL.pt");
-    const [projectImages, setProjectImages] = useState([]);
+    const [projectImages, setProjectImages] = useState<string[]>([]);
 
     // Overlay buttons
     const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
     const [showLabels, setShowLabels] = useState(true);
     const [showHeatmap, setShowHeatmap] = useState(false);
+
+    // Carousel navigation handlers
+    const goToPrevious = () => {
+        setCurrentImageIndex((prev) => (prev === 0 ? resultImagesUrls.length - 1 : prev - 1));
+    };
+
+    const goToNext = () => {
+        setCurrentImageIndex((prev) => (prev === resultImagesUrls.length - 1 ? 0 : prev + 1));
+    };
 
 
 
@@ -191,15 +234,54 @@ export default function ResultPage() {
                         </div>
                     </div>
 
-                    {/* Image Placeholder */}
-                    <div className='flex-1 flex items-center justify-center p-8'>
-                        <div className='w-full h-full bg-gray-800/30 border-2 border-dashed border-gray-700/50 rounded-lg flex items-center justify-center'>
-                            <div className='text-center'>
-                                <ImageIcon className='w-16 h-16 text-gray-600 mx-auto mb-4' />
-                                <p className='text-gray-500 text-lg'>No image loaded</p>
-                                <p className='text-gray-600 text-sm mt-2'>Detection results will appear here</p>
-                            </div>
+                    {/* Image Carousel */}
+                    <div className='flex-1 flex flex-col items-center justify-center p-8'>
+                        <div className='w-full flex-1 bg-gray-800/30 border-2 border-dashed border-gray-700/50 rounded-lg flex items-center justify-center mb-4'>
+                            {resultImagesUrls.length === 0 ? (
+                                <div className='text-center'>
+                                    <ImageIcon className='w-16 h-16 text-gray-600 mx-auto mb-4' />
+                                    <p className='text-gray-500 text-lg'>No image loaded</p>
+                                    <p className='text-gray-600 text-sm mt-2'>Detection results will appear here</p>
+                                </div>
+                            ) : (
+                                <img 
+                                    src={resultImagesUrls[currentImageIndex]} 
+                                    alt={`Detection Result ${currentImageIndex + 1}`} 
+                                    className='max-w-full max-h-full object-contain'
+                                />
+                            )}
                         </div>
+                        
+                        {/* Carousel Controls */}
+                        {resultImagesUrls.length > 0 && (
+                            <div className='flex items-center gap-4'>
+                                <Button
+                                    onClick={goToPrevious}
+                                    variant='outline'
+                                    size='lg'
+                                    className='bg-gray-800 border-gray-700 text-white hover:bg-gray-700 hover:text-white'
+                                >
+                                    <ArrowLeft className='w-5 h-5 mr-2' />
+                                    Previous
+                                </Button>
+                                
+                                <div className='px-6 py-2 bg-gray-800/50 rounded-lg border border-gray-700'>
+                                    <span className='text-white font-semibold'>
+                                        {currentImageIndex + 1} / {resultImagesUrls.length}
+                                    </span>
+                                </div>
+                                
+                                <Button
+                                    onClick={goToNext}
+                                    variant='outline'
+                                    size='lg'
+                                    className='bg-gray-800 border-gray-700 text-white hover:bg-gray-700 hover:text-white'
+                                >
+                                    Next
+                                    <ArrowRight className='w-5 h-5 ml-2' />
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
