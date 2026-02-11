@@ -59,7 +59,7 @@ async def detect_defects(job_id: str = Query(..., description="Job ID to process
             "total_defect_count": sum([r["total_defects"] for r in results]),
             "total_defect_counts": {
                 defect_type: sum(r["defect_counts"].get(defect_type, 0) for r in results)
-                for defect_type in {"cracks", "spalling", "peeling", "algae", "stain"}
+                for defect_type in {"cracks", "spalling", "peeling", "algae", "staining"}
             },
             "results": results
         }
