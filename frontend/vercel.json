@@ -1,0 +1,10 @@
+{
+    "git": {
+        "deploymentEnabled": {
+            "main": true,
+            "klyde-mej": false,
+            "jv-lib": false,
+            "sean-dp": false
+        }
+    }
+}
