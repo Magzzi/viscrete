@@ -1,89 +1,79 @@
-import {
-  Brain,
-  Camera,
-  Drone,
-  Layers,
-  MapPinned,
-  Users,
-} from "lucide-react";
+import { Scan, Video, Plane, BarChart3, MapPin, HardHat } from "lucide-react";
 
 const features = [
   {
-    icon: Brain,
+    icon: Scan,
     title: "YOLO-Based Defect Detection",
     description:
       "Automatically detects concrete surface defects such as cracks, spalling, and exposed rebars using YOLO-based deep learning models.",
   },
   {
-    icon: Camera,
+    icon: Video,
     title: "Image & Video Processing",
     description:
       "Processes images and video feeds from cameras or drones using computer vision and traditional image processing techniques.",
   },
   {
-    icon: Drone,
+    icon: Plane,
     title: "Drone & Mobile Integration",
     description:
       "Supports aerial and handheld data capture for inspecting hard-to-reach concrete structures like bridges, railways, and buildings.",
   },
   {
-    icon: Layers,
+    icon: BarChart3,
     title: "Defect Classification & Analysis",
     description:
       "Classifies detected defects by type and severity to assist engineers in prioritizing maintenance and structural assessment.",
   },
   {
-    icon: MapPinned,
+    icon: MapPin,
     title: "Geotagged Inspection Records",
     description:
       "Stores detected defects with location data, timestamps, and visual evidence for inspection tracking and documentation.",
   },
   {
-    icon: Users,
+    icon: HardHat,
     title: "Engineer-Centered Workflow",
     description:
       "Designed to assist civil engineers by reducing manual inspection effort while improving safety, consistency, and accuracy.",
   },
 ];
 
-
-const Details = () => {
+const TechnologySection = () => {
   return (
-    <div id="details" className="min-h-screen flex items-center justify-center py-12">
-      <div>
-        <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight text-center">
-          The Technology Behind <span>
-            <img 
-                src="/viscrete-dark.svg" 
-                alt="Viscrete" 
-                className="inline-block h-20 w-auto align-middle not-dark:hidden"
-            />
-            <img 
-                src="/viscrete-light.svg" 
-                alt="Viscrete" 
-                className="inline-block h-20 w-auto align-middle dark:hidden"
-            />
-          </span>
-        </h2>
-        <div className="mt-10 sm:mt-16 grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-(--breakpoint-lg) mx-auto px-6">
+    <section className="w-full py-24 bg-[#14171e]" id="technology">
+      <div className="container max-w-6xl mx-auto px-6">
+        <div className="text-center mb-16 space-y-4">
+          <p className="text-sm font-mono text-[#0da6f2] uppercase tracking-widest">
+            Core Capabilities
+          </p>
+          <h2 className="text-3xl md:text-4xl font-bold text-white">
+            The Technology Behind{" "}
+            <span className="bg-gradient-to-r from-[#2ca75d] to-[#0da6f2] bg-clip-text text-transparent">viscrete</span>
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature) => (
             <div
               key={feature.title}
-              className="transform transition duration-500 hover:scale-105 cursor-pointer flex flex-col border rounded-xl py-6 px-5"
+              className="group p-6 rounded-lg border border-[#1e4032] bg-[#101115] hover:border-[#2ca75d]/50 transition-colors"
             >
-              <div className="mb-4 h-10 w-10 flex items-center justify-center bg-muted rounded-full">
-                <feature.icon className="size-5" />
+              <div className="mb-4 w-10 h-10 rounded-md bg-[#1e4032] flex items-center justify-center group-hover:bg-[#2ca75d]/20 transition-colors">
+                <feature.icon className="w-5 h-5 text-[#2ca75d]" />
               </div>
-              <span className="text-lg font-semibold">{feature.title}</span>
-              <p className="mt-1 text-foreground/80 text-[15px] text-justify">
+              <h3 className="text-lg font-semibold text-white mb-2">
+                {feature.title}
+              </h3>
+              <p className="text-sm text-gray-400 leading-relaxed">
                 {feature.description}
               </p>
             </div>
           ))}
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 
-export default Details;
+export default TechnologySection;

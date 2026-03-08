@@ -263,7 +263,7 @@ export default function ResultPage() {
                 <div className="container mx-4 px-4 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button className="text-white hover:text-gray-300 transition-colors cursor-pointer"
-                        onClick={() => window.history.back()}>
+                        onClick={() => window.history.back()} >
                             <ArrowLeft className="w-6 h-6" />
                         </button>
                         

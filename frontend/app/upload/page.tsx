@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { HelpCircle, Upload, Search, MapPin, Trash2, Loader2 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from 'next/navigation';
-import { Navbar } from "@/components/navbar";
 
 interface PreviousReport {
   id: string;
@@ -279,7 +278,6 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0c0c0c]">
-      <Navbar/>
 
       {/* Welcome Section */}
       <div className="container mx-auto px-4 py-6">
