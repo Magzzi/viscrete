@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { uploadImage } from "@/lib/api";
 import { HelpCircle, Upload, Search, MapPin, Trash2, Loader2 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from 'next/navigation';
@@ -219,26 +220,11 @@ export default function UploadPage() {
       for (const file of uploadedFiles) {
         const fileId = `${file.name}-${file.size}`;
         
-        // Create FormData for file upload
-        const formData = new FormData();
-        formData.append('job_id', jobId);
-        formData.append('file', file);
-        
         // Simulate progress start
         setUploadProgress((prev) => ({ ...prev, [fileId]: 0 }));
         
         // Upload to backend
-        const response = await fetch(`http://127.0.0.1:8000/api/upload_images`, {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ detail: 'Upload failed' }));
-          throw new Error(errorData.detail || `Failed to upload ${file.name}`);
-        }
-        
-        const result = await response.json();
+        const result = await uploadImage(jobId, file);
         console.log(`Successfully uploaded ${file.name}:`, result);
         
         // Mark as 100% complete
