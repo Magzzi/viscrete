@@ -62,9 +62,27 @@ export default function DetectPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
 
-  // Auto-run detection on mount
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+  const REDIRECT_STATUSES = new Set(["detected", "reporting", "completed"]);
+
+  // Check job status first, then run detection or redirect
   useEffect(() => {
-    runDetection();
+    async function init() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const job = await res.json();
+        if (REDIRECT_STATUSES.has(job.status)) {
+          router.replace(`/report/${encodeURIComponent(job_id)}`);
+          return;
+        }
+      } catch {
+        // If status check fails, fall through and attempt detection anyway
+      }
+      runDetection();
+    }
+    init();
   }, []);
 
   async function runDetection() {
@@ -76,10 +94,7 @@ export default function DetectPage() {
       setResult(data);
       setHasRun(true);
     } catch (e: unknown) {
-      if (e instanceof Error && e.message.includes("409")) {
-        router.replace(`/report/${encodeURIComponent(job_id)}`);
-        return;
-      } else if (e instanceof Error && e.message.includes("404")) {
+      if (e instanceof Error && e.message.includes("404")) {
         setError("Job not found.");
       } else {
         setError(e instanceof Error ? e.message : "Detection failed");
