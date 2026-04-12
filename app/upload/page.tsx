@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   createJob,
@@ -309,13 +310,15 @@ export default function UploadPage() {
       {/* Header */}
       <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111]">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-            <FileImage className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-gray-900 dark:text-white tracking-wide">VISCRETE</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Concrete Defect Detection System</p>
-          </div>
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+              <FileImage className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-gray-900 dark:text-white tracking-wide group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">VISCRETE</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Concrete Defect Detection System</p>
+            </div>
+          </Link>
           <div className="ml-auto">
             <ModeToggle />
           </div>

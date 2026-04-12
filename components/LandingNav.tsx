@@ -1,12 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 
 const LandingNav = () => {
-  const router = useRouter();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50
@@ -26,17 +23,7 @@ const LandingNav = () => {
         </Link>
 
         {/* Right side */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => router.push("/upload")}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition
-                       bg-[#e5ac0c] hover:bg-[#e5ac0c]/90 text-black"
-          >
-            Start Inspection
-            <ArrowRight className="w-3 h-3" />
-          </button>
-          <ModeToggle />
-        </div>
+        <ModeToggle />
       </div>
     </header>
   );
