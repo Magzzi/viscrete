@@ -374,21 +374,21 @@ export default function ResultPage() {
 
       {/* Loading */}
       {isRunning && (
-        <div className="flex flex-col items-center justify-center flex-1 gap-4 text-gray-400 bg-gray-900">
+        <div className="flex flex-col items-center justify-center flex-1 gap-4 bg-gray-100 dark:bg-gray-900 text-gray-500 dark:text-gray-400">
           <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-          <p className="font-medium text-white">Running YOLOv11 inference…</p>
+          <p className="font-medium text-gray-900 dark:text-white">Running YOLOv11 inference…</p>
           <p className="text-sm">This may take a moment</p>
         </div>
       )}
 
       {/* Error */}
       {error && !isRunning && (
-        <div className="flex flex-col items-center justify-center flex-1 gap-4 bg-gray-900 p-8">
-          <div className="bg-red-950/30 border border-red-800 rounded-2xl p-6 max-w-md w-full">
+        <div className="flex flex-col items-center justify-center flex-1 gap-4 bg-gray-100 dark:bg-gray-900 p-8">
+          <div className="bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800 rounded-2xl p-6 max-w-md w-full">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
               <div>
-                <p className="text-red-300 font-medium mb-2">{error}</p>
+                <p className="text-red-700 dark:text-red-300 font-medium mb-2">{error}</p>
                 {error.includes("not found") && (
                   <button onClick={() => router.push("/upload")} className="text-sm text-red-400 underline">
                     ← Back to Upload
@@ -407,11 +407,11 @@ export default function ResultPage() {
 
       {/* Needs Detection */}
       {needsDetection && !isRunning && !hasRun && (
-        <div className="flex flex-col items-center justify-center flex-1 gap-6 bg-gray-900 p-8">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-8 max-w-md w-full text-center">
+        <div className="flex flex-col items-center justify-center flex-1 gap-6 bg-gray-100 dark:bg-gray-900 p-8">
+          <div className="bg-white border border-gray-200 dark:bg-gray-950 dark:border-gray-700 rounded-2xl p-8 max-w-md w-full text-center">
             <FileText className="w-10 h-10 text-blue-400 mx-auto mb-4" />
-            <h2 className="text-white font-semibold text-lg mb-2">Ready for Detection</h2>
-            <p className="text-gray-400 text-sm mb-6">
+            <h2 className="text-gray-900 dark:text-white font-semibold text-lg mb-2">Ready for Detection</h2>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
               Images have been preprocessed. Run the detection process to identify concrete defects.
             </p>
             <button
@@ -428,20 +428,20 @@ export default function ResultPage() {
       {hasRun && detectData && (
         <div className="flex flex-1">
           {/* Main Image Viewer */}
-          <div className="flex-1 bg-gray-900 flex flex-col">
+          <div className="flex-1 bg-gray-100 dark:bg-gray-900 flex flex-col">
             {/* Overlay Controls */}
             <div className="flex justify-center pt-6 px-8">
-              <div className="bg-gray-950/90 backdrop-blur-sm border border-gray-700 rounded-lg px-6 py-3 flex flex-col gap-3">
+              <div className="bg-white/90 backdrop-blur-sm border border-gray-200 dark:bg-gray-950/90 dark:border-gray-700 rounded-lg px-6 py-3 flex flex-col gap-3">
                 {/* Row 1 — overlay type toggles */}
                 <div className="flex items-center gap-6">
-                  <span className="text-gray-400 text-sm uppercase tracking-wider">Overlays</span>
+                  <span className="text-gray-500 dark:text-gray-400 text-sm uppercase tracking-wider">Overlays</span>
 
                   {/* Bounding Boxes Toggle */}
                   <button
                     onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
-                    className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
+                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
                   >
-                    <div className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${showBoundingBoxes ? 'bg-blue-500' : 'bg-gray-600'}`}>
+                    <div className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${showBoundingBoxes ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${showBoundingBoxes ? 'right-1' : 'left-1'}`} />
                     </div>
                     <Box className="w-5 h-5" />
@@ -450,9 +450,9 @@ export default function ResultPage() {
                   {/* Labels Toggle */}
                   <button
                     onClick={() => setShowLabels(!showLabels)}
-                    className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
+                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
                   >
-                    <div className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${showLabels ? 'bg-blue-500' : 'bg-gray-600'}`}>
+                    <div className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${showLabels ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${showLabels ? 'right-1' : 'left-1'}`} />
                     </div>
                     <Tag className="w-5 h-5" />
@@ -461,9 +461,9 @@ export default function ResultPage() {
                   {/* Heatmap Toggle */}
                   <button
                     onClick={() => setShowColorOverlay(!showColorOverlay)}
-                    className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
+                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
                   >
-                    <div className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${showColorOverlay ? 'bg-blue-500' : 'bg-gray-600'}`}>
+                    <div className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${showColorOverlay ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${showColorOverlay ? 'right-1' : 'left-1'}`} />
                     </div>
                     <Layers className="w-5 h-5" />
@@ -471,8 +471,8 @@ export default function ResultPage() {
                 </div>
 
                 {/* Row 2 — per-class toggles */}
-                <div className="flex items-center gap-2 border-t border-gray-700 pt-3">
-                  <span className="text-gray-500 text-xs uppercase tracking-wider mr-2">Classes</span>
+                <div className="flex items-center gap-2 border-t border-gray-200 dark:border-gray-700 pt-3">
+                  <span className="text-gray-500 dark:text-gray-500 text-xs uppercase tracking-wider mr-2">Classes</span>
                   {allDefectClasses.map(cls => {
                     const active = visibleDefects.has(cls);
                     const dot: Record<string, string> = {
@@ -486,8 +486,8 @@ export default function ResultPage() {
                         className={cn(
                           'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer',
                           active
-                            ? 'bg-gray-800 border-gray-500 text-white'
-                            : 'bg-transparent border-gray-700 text-gray-500',
+                            ? 'bg-gray-100 border-gray-400 text-gray-900 dark:bg-gray-800 dark:border-gray-500 dark:text-white'
+                            : 'bg-transparent border-gray-300 text-gray-400 dark:border-gray-700 dark:text-gray-500',
                         )}
                       >
                         <span className={cn('w-2 h-2 rounded-full', dot[cls], !active && 'opacity-40')} />
@@ -501,12 +501,12 @@ export default function ResultPage() {
 
             {/* Image Carousel */}
             <div className="flex-1 flex flex-col p-8 min-h-0">
-              <div className="bg-gray-800/30 border-2 border-dashed border-gray-700/50 rounded-lg mb-4 p-8" style={{ height: '480px' }}>
+              <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 p-8" style={{ height: '480px' }}>
                 {!currentImageSrc ? (
                   <div className="w-full h-full flex flex-col items-center justify-center">
-                    <ImageIcon className="w-16 h-16 text-gray-600 mb-4" />
+                    <ImageIcon className="w-16 h-16 text-gray-400 dark:text-gray-600 mb-4" />
                     <p className="text-gray-500 text-lg">No image loaded</p>
-                    <p className="text-gray-600 text-sm mt-2">Detection results will appear here</p>
+                    <p className="text-gray-400 dark:text-gray-600 text-sm mt-2">Detection results will appear here</p>
                   </div>
                 ) : (
                   <div className="relative w-full h-full overflow-hidden">
@@ -578,13 +578,13 @@ export default function ResultPage() {
                     onClick={goToPrevious}
                     variant="outline"
                     size="lg"
-                    className="cursor-pointer bg-gray-800 border-gray-700 text-white hover:bg-gray-700 hover:text-white"
+                    className="cursor-pointer bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700 dark:hover:text-white"
                   >
                     <ArrowLeft className="w-5 h-5 mr-2" />
                     Previous
                   </Button>
-                  <div className="px-6 py-2 bg-gray-800/50 rounded-lg border border-gray-700">
-                    <span className="text-white font-semibold">
+                  <div className="px-6 py-2 bg-gray-100 rounded-lg border border-gray-200 dark:bg-gray-800/50 dark:border-gray-700">
+                    <span className="text-gray-900 dark:text-white font-semibold">
                       {currentImageIndex + 1} / {totalImages}
                     </span>
                   </div>
@@ -592,7 +592,7 @@ export default function ResultPage() {
                     onClick={goToNext}
                     variant="outline"
                     size="lg"
-                    className="cursor-pointer bg-gray-800 border-gray-700 text-white hover:bg-gray-700 hover:text-white"
+                    className="cursor-pointer bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700 dark:hover:text-white"
                   >
                     Next
                     <ArrowRight className="w-5 h-5 ml-2" />
@@ -604,10 +604,10 @@ export default function ResultPage() {
               {allDetections.length > 0 && (
                 <div className="w-full mt-auto pt-10">
                   <div className="flex items-center gap-4 mb-3">
-                    <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Defect Summary</h2>
+                    <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Defect Summary</h2>
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="font-medium text-gray-300">{totalDefectCount} defect{totalDefectCount !== 1 ? "s" : ""} detected</span>
-                      <span className="text-gray-600">•</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{totalDefectCount} defect{totalDefectCount !== 1 ? "s" : ""} detected</span>
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
                       <span className="text-emerald-400 font-medium">{lowCount} Low</span>
                       <span className="text-gray-600">•</span>
                       <span className="text-amber-400 font-medium">{midCount} Medium</span>
@@ -615,11 +615,11 @@ export default function ResultPage() {
                       <span className="text-red-400 font-medium">{highCount} High</span>
                     </div>
                   </div>
-                  <div className="bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden">
+                  <div className="bg-white border border-gray-200 dark:bg-gray-950 dark:border-gray-800 rounded-2xl overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-gray-800">
+                          <tr className="border-b border-gray-200 dark:border-gray-800">
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Defect Type</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Confidence</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Severity</th>
@@ -629,12 +629,12 @@ export default function ResultPage() {
                         </thead>
                         <tbody>
                           {allDetections.map((d, i) => (
-                            <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-900/50 transition">
-                              <td className="px-4 py-3 font-medium text-gray-200 capitalize">{d.defect_type}</td>
-                              <td className="px-4 py-3 text-gray-300">{Math.round(d.confidence * 100)}%</td>
+                            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800/50 dark:hover:bg-gray-900/50 transition">
+                              <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200 capitalize">{d.defect_type}</td>
+                              <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{Math.round(d.confidence * 100)}%</td>
                               <td className="px-4 py-3">{severityBadge(d.severity)}</td>
-                              <td className="px-4 py-3 text-gray-400">{d.crack_width_mm != null ? `${d.crack_width_mm.toFixed(1)} mm` : "—"}</td>
-                              <td className="px-4 py-3 text-gray-400">{d.area_px != null ? `${d.area_px.toLocaleString()} px²` : "—"}</td>
+                              <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{d.crack_width_mm != null ? `${d.crack_width_mm.toFixed(1)} mm` : "—"}</td>
+                              <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{d.area_px != null ? `${d.area_px.toLocaleString()} px²` : "—"}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -647,40 +647,40 @@ export default function ResultPage() {
           </div>
 
           {/* Right Sidebar */}
-          <div className="w-96 bg-gray-950 border-l border-gray-800 p-6 overflow-y-auto">
+          <div className="w-96 bg-white border-l border-gray-200 dark:bg-gray-950 dark:border-gray-800 p-6 overflow-y-auto">
             {/* Defect Type Cards Grid */}
             <div className="grid grid-cols-2 gap-3 mb-6">
-              <div className="bg-blue-950/30 border border-blue-900/50 rounded-lg p-4">
-                <div className="text-blue-400 text-3xl font-bold mb-1">{totalDefectCount}</div>
-                <div className="text-blue-300 text-sm">Total Defects</div>
+              <div className="bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50 rounded-lg p-4">
+                <div className="text-blue-600 dark:text-blue-400 text-3xl font-bold mb-1">{totalDefectCount}</div>
+                <div className="text-blue-700 dark:text-blue-300 text-sm">Total Defects</div>
               </div>
-              <div className="bg-red-950/30 border border-red-900/50 rounded-lg p-4">
-                <div className="text-red-400 text-3xl font-bold mb-1">{cracksCount}</div>
-                <div className="text-red-300 text-sm">Cracks</div>
+              <div className="bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-900/50 rounded-lg p-4">
+                <div className="text-red-600 dark:text-red-400 text-3xl font-bold mb-1">{cracksCount}</div>
+                <div className="text-red-700 dark:text-red-300 text-sm">Cracks</div>
               </div>
-              <div className="bg-yellow-950/30 border border-yellow-900/50 rounded-lg p-4">
-                <div className="text-yellow-400 text-3xl font-bold mb-1">{spallingCount}</div>
-                <div className="text-yellow-300 text-sm">Spalling</div>
+              <div className="bg-yellow-50 border border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-900/50 rounded-lg p-4">
+                <div className="text-yellow-600 dark:text-yellow-400 text-3xl font-bold mb-1">{spallingCount}</div>
+                <div className="text-yellow-700 dark:text-yellow-300 text-sm">Spalling</div>
               </div>
-              <div className="bg-orange-950/30 border border-orange-900/50 rounded-lg p-4">
-                <div className="text-orange-400 text-3xl font-bold mb-1">{peelingCount}</div>
-                <div className="text-orange-300 text-sm">Peeling</div>
+              <div className="bg-orange-50 border border-orange-200 dark:bg-orange-950/30 dark:border-orange-900/50 rounded-lg p-4">
+                <div className="text-orange-600 dark:text-orange-400 text-3xl font-bold mb-1">{peelingCount}</div>
+                <div className="text-orange-700 dark:text-orange-300 text-sm">Peeling</div>
               </div>
-              <div className="bg-green-950/30 border border-green-900/50 rounded-lg p-4">
-                <div className="text-green-400 text-3xl font-bold mb-1">{algaeCount}</div>
-                <div className="text-green-300 text-sm">Algae</div>
+              <div className="bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-900/50 rounded-lg p-4">
+                <div className="text-green-600 dark:text-green-400 text-3xl font-bold mb-1">{algaeCount}</div>
+                <div className="text-green-700 dark:text-green-300 text-sm">Algae</div>
               </div>
-              <div className="bg-purple-950/30 border border-purple-900/50 rounded-lg p-4">
-                <div className="text-purple-400 text-3xl font-bold mb-1">{stainCount}</div>
-                <div className="text-purple-300 text-sm">Stain</div>
+              <div className="bg-purple-50 border border-purple-200 dark:bg-purple-950/30 dark:border-purple-900/50 rounded-lg p-4">
+                <div className="text-purple-600 dark:text-purple-400 text-3xl font-bold mb-1">{stainCount}</div>
+                <div className="text-purple-700 dark:text-purple-300 text-sm">Stain</div>
               </div>
             </div>
 
-            <div className="w-full h-px bg-gray-800 mb-6" />
+            <div className="w-full h-px bg-gray-200 dark:bg-gray-800 mb-6" />
 
             {/* Severity breakdown */}
             <div className="mb-6">
-              <div className="text-xs text-gray-400 uppercase mb-3 tracking-wider">Severity Breakdown</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 uppercase mb-3 tracking-wider">Severity Breakdown</div>
               <div className="space-y-3">
                 {([
                   { label: "Low",    count: lowCount,  bar: "bg-emerald-500", text: "text-emerald-400", track: "bg-emerald-950/50" },
@@ -693,7 +693,7 @@ export default function ResultPage() {
                       <div className="flex items-center justify-between mb-1">
                         <span className={cn("text-sm font-medium", text)}>{label}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">{pct}%</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">{pct}%</span>
                           <span className={cn("px-2 py-0.5 rounded-full text-xs font-bold text-white", bar)}>{count}</span>
                         </div>
                       </div>
@@ -709,11 +709,11 @@ export default function ResultPage() {
               </div>
             </div>
 
-            <div className="w-full h-px bg-gray-800 mb-6" />
+            <div className="w-full h-px bg-gray-200 dark:bg-gray-800 mb-6" />
 
             {/* Report error */}
             {reportError && (
-              <div className="flex items-center gap-2 p-3 bg-red-950/30 border border-red-800 rounded-xl text-sm text-red-400 mb-4">
+              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400 mb-4">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {reportError}
               </div>
@@ -721,7 +721,7 @@ export default function ResultPage() {
 
             {/* Export */}
             <div>
-              <div className="text-xs text-gray-400 uppercase mb-4 tracking-wider">Export Report</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 uppercase mb-4 tracking-wider">Export Report</div>
 
               {!reportGenerated ? (
                 <Button
@@ -750,36 +750,36 @@ export default function ResultPage() {
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="w-full cursor-pointer bg-black border-2 border-yellow-500 text-yellow-500 hover:bg-[#221f0c] hover:text-yellow-500">
+                      <Button variant="outline" className="w-full cursor-pointer bg-white border-2 border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:bg-black dark:text-yellow-500 dark:hover:bg-[#221f0c] dark:hover:text-yellow-500">
                         <Grid3x3 className="w-4 h-4 mr-2" />
                         More Export Options
                         <ChevronDown className="w-4 h-4 ml-auto" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 bg-gray-900 border-gray-700">
+                    <DropdownMenuContent align="end" className="w-56 bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-700">
                       <DropdownMenuItem
-                        className="text-white hover:bg-gray-800 cursor-pointer"
+                        className="text-gray-800 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-800 cursor-pointer"
                         onClick={handleViewPdf}
                       >
                         <FileText className="w-4 h-4 mr-2" />
                         <div>
                           <div className="font-semibold">View PDF</div>
-                          <div className="text-xs text-gray-400">Open in new tab</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Open in new tab</div>
                         </div>
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        className="text-white hover:bg-gray-800 cursor-pointer"
+                        className="text-gray-800 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-800 cursor-pointer"
                         onClick={handleDownloadPdf}
                       >
                         <Download className="w-4 h-4 mr-2" />
                         <div>
                           <div className="font-semibold">Download PDF</div>
-                          <div className="text-xs text-gray-400">Visual inspection report</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Visual inspection report</div>
                         </div>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <p className="text-xs text-center text-gray-400 mt-2">PDF includes annotated images & findings summary</p>
+                  <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">PDF includes annotated images & findings summary</p>
                 </>
               )}
             </div>

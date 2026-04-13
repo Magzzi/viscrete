@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://viscrete-core.shares.zrok.io';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://viscrete-core.shares.zrok.io';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +28,7 @@ export interface ValidationResult {
   laplacian_score: number;
   blur_threshold: number;
   is_blurry: boolean;
+  original_path?: string | null;
   gps?: { lat: number; lng: number } | null;
   reason?: string | null;
 }

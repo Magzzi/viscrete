@@ -9,6 +9,7 @@ import {
   validateFiles,
   listJobs,
   deleteJob,
+  API_BASE_URL,
   type JobStatusResponse,
   type ValidationResult,
 } from "@/lib/api";
@@ -26,6 +27,8 @@ import {
   FileVideo,
   Clock,
   AlertCircle,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 
@@ -73,6 +76,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const JOBS_PER_PAGE = 5;
+const RESULTS_PER_PAGE = 12;
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -99,6 +103,7 @@ export default function UploadPage() {
   // ── Validation filters
   const [gpsFilter, setGpsFilter] = useState<"all" | "with" | "without">("all");
   const [blurFilter, setBlurFilter] = useState<"all" | "sharp" | "blurry">("all");
+  const [resultsPage, setResultsPage] = useState(1);
 
   // ── Previous jobs
   const [jobs, setJobs] = useState<JobStatusResponse[]>([]);
@@ -108,6 +113,9 @@ export default function UploadPage() {
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+
+  // ── Image preview modal
+  const [previewResult, setPreviewResult] = useState<ValidationResult | null>(null);
 
   // ── Toast
   const [toast, setToast] = useState<{ msg: string; type: "error" | "warn" } | null>(null);
@@ -119,6 +127,9 @@ export default function UploadPage() {
     setCanProceed(false);
     setUploadError(null);
   }, [mediaType]);
+
+  // Reset results page when filters or results change
+  useEffect(() => { setResultsPage(1); }, [gpsFilter, blurFilter, validationResults]);
 
   // Load previous jobs on mount
   useEffect(() => {
@@ -280,8 +291,9 @@ export default function UploadPage() {
     const hasGps = r.gps != null;
     if (gpsFilter === "with" && !hasGps) return false;
     if (gpsFilter === "without" && hasGps) return false;
-    if (blurFilter === "sharp" && r.is_blurry) return false;
-    if (blurFilter === "blurry" && !r.is_blurry) return false;
+    const isLowQuality = r.laplacian_score < r.blur_threshold;
+    if (blurFilter === "sharp" && isLowQuality) return false;
+    if (blurFilter === "blurry" && !isLowQuality) return false;
     return true;
   });
 
@@ -289,8 +301,12 @@ export default function UploadPage() {
   const totalPages = Math.max(1, Math.ceil(jobs.length / JOBS_PER_PAGE));
   const pagedJobs = jobs.slice((jobsPage - 1) * JOBS_PER_PAGE, jobsPage * JOBS_PER_PAGE);
 
-  const validCount = validationResults?.filter(r => r.is_valid).length ?? 0;
-  const invalidCount = (validationResults?.length ?? 0) - validCount;
+  const highQualityCount = validationResults?.filter(r => r.laplacian_score >= r.blur_threshold).length ?? 0;
+  const lowQualityCount = (validationResults?.length ?? 0) - highQualityCount;
+
+  // ── Results pagination (derived after filteredResults)
+  const totalResultsPages = Math.max(1, Math.ceil(filteredResults.length / RESULTS_PER_PAGE));
+  const pagedResults = filteredResults.slice((resultsPage - 1) * RESULTS_PER_PAGE, resultsPage * RESULTS_PER_PAGE);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a]">
@@ -439,21 +455,31 @@ export default function UploadPage() {
 
               {/* File list */}
               {files.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  {files.map((f, i) => (
-                    <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm">
-                      {mediaType === "image" ? <FileImage className="w-4 h-4 text-blue-400 shrink-0" /> : <FileVideo className="w-4 h-4 text-purple-400 shrink-0" />}
-                      <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{f.name}</span>
-                      <span className="text-gray-400 text-xs shrink-0">{formatBytes(f.size)}</span>
-                      <button
-                        onClick={e => { e.stopPropagation(); removeFile(i); }}
-                        className="text-gray-400 hover:text-red-500 transition shrink-0"
-                        aria-label="Remove file"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                      Selected files
+                    </span>
+                    <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+                      {files.length} {files.length === 1 ? "file" : "files"}
+                    </span>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {files.map((f, i) => (
+                      <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm">
+                        {mediaType === "image" ? <FileImage className="w-4 h-4 text-blue-400 shrink-0" /> : <FileVideo className="w-4 h-4 text-purple-400 shrink-0" />}
+                        <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{f.name}</span>
+                        <span className="text-gray-400 text-xs shrink-0">{formatBytes(f.size)}</span>
+                        <button
+                          onClick={e => { e.stopPropagation(); removeFile(i); }}
+                          className="text-gray-400 hover:text-red-500 transition shrink-0"
+                          aria-label="Remove file"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -690,7 +716,7 @@ export default function UploadPage() {
                               : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                           )}
                         >
-                          {opt === "all" ? "All" : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                          {opt === "all" ? "All" : opt === "sharp" ? "High Quality" : "Low Quality"}
                         </button>
                       ))}
                     </div>
@@ -700,9 +726,9 @@ export default function UploadPage() {
                   <div className="text-sm text-gray-600 dark:text-gray-300 flex flex-wrap gap-3">
                     <span className="font-medium">{validationResults!.length} files uploaded</span>
                     <span className="text-gray-300 dark:text-gray-600">•</span>
-                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">{validCount} valid</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">{highQualityCount} High Quality</span>
                     <span className="text-gray-300 dark:text-gray-600">•</span>
-                    <span className="text-red-500 dark:text-red-400 font-medium">{invalidCount} invalid</span>
+                    <span className="text-amber-500 dark:text-amber-400 font-medium">{lowQualityCount} Low Quality</span>
                   </div>
                 </div>
 
@@ -710,73 +736,190 @@ export default function UploadPage() {
                 {filteredResults.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center py-8">No files match the current filters.</p>
                 ) : (
-                  filteredResults.map((r, i) => (
-                    <FileResultCard key={i} result={r} />
-                  ))
+                  <>
+                    <div className="space-y-1.5 max-h-[560px] overflow-y-auto pr-1">
+                      {pagedResults.map((r, i) => (
+                        <FileResultCard key={(resultsPage - 1) * RESULTS_PER_PAGE + i} result={r} onPreview={() => setPreviewResult(r)} />
+                      ))}
+                    </div>
+                    {totalResultsPages > 1 && (
+                      <div className="flex items-center justify-between pt-2">
+                        <button
+                          onClick={() => setResultsPage(p => Math.max(1, p - 1))}
+                          disabled={resultsPage === 1}
+                          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                        >
+                          <ChevronLeft className="w-4 h-4" /> Previous
+                        </button>
+                        <span className="text-xs text-gray-400">
+                          Page {resultsPage} of {totalResultsPages}
+                          <span className="ml-1 text-gray-300 dark:text-gray-600">({filteredResults.length} files)</span>
+                        </span>
+                        <button
+                          onClick={() => setResultsPage(p => Math.min(totalResultsPages, p + 1))}
+                          disabled={resultsPage === totalResultsPages}
+                          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                        >
+                          Next <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
           </div>
         </div>
       </main>
+
+      {/* ── Image Preview Modal ── */}
+      {previewResult && (
+        <ImagePreviewModal result={previewResult} onClose={() => setPreviewResult(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Image Preview Modal ──────────────────────────────────────────────────────
+
+function ImagePreviewModal({ result, onClose }: { result: ValidationResult; onClose: () => void }) {
+  const isLowQuality = result.laplacian_score < result.blur_threshold;
+  const imageUrl = result.original_path ? `${API_BASE_URL}/static/${result.original_path}` : null;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-[#161616] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl w-full max-w-lg overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+          <span className="flex-1 text-sm font-semibold text-gray-800 dark:text-gray-100 truncate min-w-0">
+            {result.filename}
+          </span>
+          <button
+            onClick={onClose}
+            className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Image */}
+        <div className="bg-gray-100 dark:bg-gray-900 flex items-center justify-center" style={{ minHeight: 200, maxHeight: 320, overflow: "hidden" }}>
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl} alt={result.filename} className="max-w-full object-contain" style={{ maxHeight: 320 }} />
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-14 text-gray-400">
+              <FileImage className="w-10 h-10" />
+              <span className="text-xs">No preview available</span>
+            </div>
+          )}
+        </div>
+
+        {/* Metadata tiles */}
+        <div className="grid grid-cols-3 gap-3 px-4 py-4">
+          {/* Laplacian */}
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">Laplacian</p>
+            <p className="font-mono font-semibold text-sm text-gray-800 dark:text-gray-100">{result.laplacian_score.toFixed(2)}</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">thresh: {result.blur_threshold.toFixed(2)}</p>
+          </div>
+
+          {/* Quality */}
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">Quality</p>
+            <p className={cn("font-semibold text-sm flex items-center gap-1", isLowQuality ? "text-amber-500 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>
+              {isLowQuality && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+              {isLowQuality ? "Low" : "High"}
+            </p>
+          </div>
+
+          {/* GPS */}
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">GPS</p>
+            {result.gps ? (
+              <p className="font-mono text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+                {result.gps.lat.toFixed(5)}<br />{result.gps.lng.toFixed(5)}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-gray-500">No data</p>
+            )}
+          </div>
+        </div>
+
+        {/* Invalid reason */}
+        {!result.is_valid && result.reason && (
+          <div className="mx-4 mb-4 flex items-start gap-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg">
+            <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            {result.reason}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // ─── File Result Card ─────────────────────────────────────────────────────────
 
-function FileResultCard({ result }: { result: ValidationResult }) {
+function FileResultCard({ result, onPreview }: { result: ValidationResult; onPreview: () => void }) {
+  const isLowQuality = result.laplacian_score < result.blur_threshold;
   return (
-    <div className={cn(
-      "bg-white dark:bg-[#161616] rounded-2xl border shadow-sm p-4 transition",
-      result.is_valid
-        ? "border-emerald-200 dark:border-emerald-900"
-        : "border-red-200 dark:border-red-900"
-    )}>
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate flex-1">
+    <div
+      onClick={onPreview}
+      className={cn(
+        "bg-white dark:bg-[#161616] rounded-xl border px-3 py-2 transition cursor-pointer",
+        result.is_valid
+          ? "border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-700"
+          : "border-red-200 dark:border-red-900/60 hover:border-red-400 dark:hover:border-red-700"
+      )}
+    >
+      {/* Single compact row */}
+      <div className="flex items-center gap-2 min-w-0">
+        {result.is_valid
+          ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          : <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+
+        <span className="flex-1 min-w-0 truncate text-xs font-medium text-gray-800 dark:text-gray-100">
           {result.filename}
         </span>
+
+        <span className="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">
+          {result.laplacian_score.toFixed(1)}
+          <span className="text-gray-300 dark:text-gray-700">/{result.blur_threshold.toFixed(1)}</span>
+        </span>
+
         <span className={cn(
-          "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shrink-0",
-          result.is_valid
-            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-            : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+          "shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold",
+          isLowQuality
+            ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
         )}>
-          {result.is_valid ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-          {result.is_valid ? "Valid" : "Invalid"}
+          {isLowQuality && <AlertTriangle className="w-2.5 h-2.5" />}
+          {isLowQuality ? "Low" : "High"}
+        </span>
+
+        <span className="shrink-0 flex items-center gap-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+          {result.gps
+            ? <><MapPin className="w-2.5 h-2.5 text-blue-400" />{result.gps.lat.toFixed(3)}, {result.gps.lng.toFixed(3)}</>
+            : <span className="text-gray-300 dark:text-gray-700">No GPS</span>}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-400">
-        <div>
-          <span className="text-gray-400 dark:text-gray-500">Laplacian Score</span>
-          <p className="font-medium text-gray-800 dark:text-gray-200">
-            {result.laplacian_score.toFixed(1)}
-            <span className="ml-1 text-gray-400 font-normal">(threshold: {result.blur_threshold.toFixed(1)})</span>
-          </p>
-        </div>
-        <div>
-          <span className="text-gray-400 dark:text-gray-500">Sharpness</span>
-          <p className={cn("font-medium", result.is_blurry ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>
-            {result.is_blurry ? "Blurry" : "Sharp"}
-          </p>
-        </div>
-        <div className="col-span-2">
-          <span className="text-gray-400 dark:text-gray-500">GPS</span>
-          <p className="font-medium text-gray-800 dark:text-gray-200 flex items-center gap-1">
-            {result.gps
-              ? <><MapPin className="w-3 h-3 text-blue-400" />{result.gps.lat.toFixed(4)}, {result.gps.lng.toFixed(4)}</>
-              : "—"}
-          </p>
-        </div>
-      </div>
-
+      {/* Error reason — indented below filename */}
       {!result.is_valid && result.reason && (
-        <div className="mt-3 flex items-center gap-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg">
-          <XCircle className="w-3.5 h-3.5 shrink-0" />
+        <p className="mt-0.5 pl-5 text-[10px] text-red-500 dark:text-red-400 truncate">
           {result.reason}
-        </div>
+        </p>
       )}
     </div>
   );
