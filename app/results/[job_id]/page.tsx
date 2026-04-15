@@ -610,11 +610,11 @@ export default function ResultPage() {
             </div>
 
             {/* Image Carousel / Video Player */}
-            <div className="flex-1 flex flex-col p-8 min-h-0">
+            <div className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 min-h-0">
 
               {/* ── Video player ─────────────────────────────────────────────── */}
               {viewMode === "video" && isVideoJob && (
-                <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 flex items-center justify-center" style={{ height: '480px' }}>
+                <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 flex items-center justify-center h-[45vh] min-h-[280px] md:h-[58vh] lg:h-[65vh]">
                   {annotatedVideoPath ? (
                     <video
                       key={annotatedVideoPath}
@@ -635,7 +635,7 @@ export default function ResultPage() {
               {/* ── Image carousel ───────────────────────────────────────────── */}
               {viewMode === "images" && (
               <>
-              <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 p-8" style={{ height: '480px' }}>
+              <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 h-[45vh] min-h-[280px] md:h-[58vh] lg:h-[65vh]">
                 {!currentImageSrc ? (
                   <div className="w-full h-full flex flex-col items-center justify-center">
                     <ImageIcon className="w-16 h-16 text-gray-400 dark:text-gray-600 mb-4" />
@@ -665,36 +665,43 @@ export default function ResultPage() {
                           const { bounding_box, defect_type, confidence } = detection;
                           const { x1, y1, x2, y2 } = bounding_box;
 
-                          const left = x1 * scaleX;
-                          const top = y1 * scaleY;
-                          const width = (x2 - x1) * scaleX;
+                          const left   = x1 * scaleX;
+                          const top    = y1 * scaleY;
+                          const width  = (x2 - x1) * scaleX;
                           const height = (y2 - y1) * scaleY;
-                          const labelAbove = top > 30;
+
+                          // Place label above the box when there's room (top > 28px),
+                          // otherwise below. Clamp left so the label doesn't overflow
+                          // the right edge of the rendered image.
+                          const labelAbove = top > 28;
+                          const labelLeft  = Math.min(left, renderedW - 120);
 
                           return (
                             <div key={index}>
+                              {/* Bounding box */}
                               <div
                                 className={cn(
                                   "absolute pointer-events-none",
                                   showBoundingBoxes ? `border-2 ${defectBorderColor[defect_type] ?? 'border-white'}` : '',
-                                  showColorOverlay ? (defectBgColor[defect_type] ?? 'bg-white/20') : '',
+                                  showColorOverlay  ? (defectBgColor[defect_type] ?? 'bg-white/20') : '',
                                 )}
                                 style={{ left, top, width, height }}
                               />
+                              {/* Label */}
                               {showLabels && (
                                 <div
                                   className={cn(
-                                    "absolute pointer-events-none px-2 py-1 text-xs text-white whitespace-nowrap",
-                                    defectLabelBg[defect_type] ?? 'bg-white',
+                                    "absolute pointer-events-none px-1.5 py-0.5 text-[11px] leading-tight font-semibold text-white rounded-sm whitespace-nowrap",
+                                    defectLabelBg[defect_type] ?? 'bg-gray-700',
                                   )}
                                   style={{
-                                    left,
-                                    [labelAbove ? 'bottom' : 'top']: labelAbove
-                                      ? renderedH - top + 4
-                                      : top + height + 4,
+                                    left: labelLeft,
+                                    ...(labelAbove
+                                      ? { bottom: renderedH - top + 2 }
+                                      : { top: top + height + 2 }),
                                   }}
                                 >
-                                  {defect_type.charAt(0).toUpperCase() + defect_type.slice(1)} • {Math.round(confidence * 100)}%
+                                  {defect_type.charAt(0).toUpperCase() + defect_type.slice(1)} {Math.round(confidence * 100)}%
                                 </div>
                               )}
                             </div>
