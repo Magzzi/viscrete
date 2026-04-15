@@ -610,11 +610,11 @@ export default function ResultPage() {
             </div>
 
             {/* Image Carousel / Video Player */}
-            <div className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 min-h-0">
+            <div className="flex-1 flex flex-col p-8 min-h-0">
 
               {/* ── Video player ─────────────────────────────────────────────── */}
               {viewMode === "video" && isVideoJob && (
-                <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 flex items-center justify-center h-[45vh] min-h-[280px] md:h-[58vh] lg:h-[65vh]">
+                <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 flex items-center justify-center" style={{ height: '480px' }}>
                   {annotatedVideoPath ? (
                     <video
                       key={annotatedVideoPath}
@@ -635,7 +635,7 @@ export default function ResultPage() {
               {/* ── Image carousel ───────────────────────────────────────────── */}
               {viewMode === "images" && (
               <>
-              <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 h-[45vh] min-h-[280px] md:h-[58vh] lg:h-[65vh]">
+              <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 p-8" style={{ height: '480px' }}>
                 {!currentImageSrc ? (
                   <div className="w-full h-full flex flex-col items-center justify-center">
                     <ImageIcon className="w-16 h-16 text-gray-400 dark:text-gray-600 mb-4" />
