@@ -198,7 +198,7 @@ export default function LocationPickerModal({
           {tab === "map" && (
             <>
               {/* Interactive map */}
-              <div className="relative" style={{ height: 320 }}>
+              <div className="relative" style={{ height: 360 }}>
                 <LocationMapInner
                   lat={parsedLat}
                   lng={parsedLng}
