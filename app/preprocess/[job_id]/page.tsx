@@ -807,38 +807,44 @@ export default function PreprocessPage() {
     // ── Result fetch (called after completed event) ───────────────────────────
 
     async function fetchResults() {
-      try {
-        const res = await fetch(
-          `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`
-        );
-        if (cancelled) return;
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: JobStatus = await res.json();
-        if (cancelled) return;
-        const r = data.preprocessing_result ?? null;
-        if (r) {
-          setResult(r);
-          try {
-            localStorage.setItem(
-              `preprocess_result_${job_id}`,
-              JSON.stringify(r)
-            );
-          } catch { /* quota */ }
-        } else {
-          addPipelineLine("Warning: could not load result data", "warning");
-          try {
-            const cached = localStorage.getItem(`preprocess_result_${job_id}`);
-            if (cached) setResult(JSON.parse(cached));
-          } catch { /* corrupt cache */ }
+      const delays = [0, 1000, 2000, 4000];
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        if (delays[attempt] > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
         }
-      } catch {
         if (cancelled) return;
-        addPipelineLine("Warning: could not load result data", "warning");
         try {
-          const cached = localStorage.getItem(`preprocess_result_${job_id}`);
-          if (cached) setResult(JSON.parse(cached));
-        } catch { /* ignore */ }
+          const res = await fetch(
+            `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`
+          );
+          if (cancelled) return;
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data: JobStatus = await res.json();
+          if (cancelled) return;
+          const r = data.preprocessing_result ?? null;
+          if (r) {
+            setResult(r);
+            try {
+              localStorage.setItem(
+                `preprocess_result_${job_id}`,
+                JSON.stringify(r)
+              );
+            } catch { /* quota */ }
+            return;
+          }
+          // preprocessing_result not yet persisted — retry unless last attempt
+        } catch {
+          if (cancelled) return;
+          // HTTP error is not a race condition — stop retrying
+          break;
+        }
       }
+      if (cancelled) return;
+      addPipelineLine("Warning: could not load result data", "warning");
+      try {
+        const cached = localStorage.getItem(`preprocess_result_${job_id}`);
+        if (cached) setResult(JSON.parse(cached));
+      } catch { /* corrupt cache */ }
     }
 
     // ── Polling fallback ──────────────────────────────────────────────────────
