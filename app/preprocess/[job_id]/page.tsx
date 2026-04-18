@@ -1110,6 +1110,9 @@ export default function PreprocessPage() {
           fetchResults();
           break;
         }
+
+        case "ping":
+          break; // keepalive from backend — no action needed
       }
     }
 
