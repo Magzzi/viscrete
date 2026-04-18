@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { preprocessJob } from "@/lib/api";
 import {
   CheckCircle2,
   XCircle,
@@ -16,10 +15,39 @@ import {
   ChevronUp,
   Terminal,
   Video,
+  Copy,
+  Trash2,
 } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type StepStatus = "pending" | "in_progress" | "completed" | "failed";
+type LogLevel = "info" | "warning" | "error";
+
+interface StepState {
+  step: number;
+  name: string;
+  status: StepStatus;
+  duration_sec: number | null;
+  detail: string | null;
+  progress: number | null;
+  error: string | null;
+}
+
+interface TerminalLine {
+  timestamp: string;
+  step: number | null;
+  name: string | null;
+  level: LogLevel;
+  message: string;
+}
+
+interface CompletedSummary {
+  total_processed: number;
+  pipeline_type: string;
+  duration_sec: number;
+}
 
 interface FileStatusItem {
   file_id: string;
@@ -47,17 +75,15 @@ interface PipelineStep {
   detail: string;
 }
 
-interface ClaheParams {
-  clip_limit: number;
-  tile_grid_size: [number, number];
-  source: string;
-}
-
 interface ClusterInfo {
   cluster_id: number;
   representative_file_id: string;
   member_count: number;
-  clahe_params: ClaheParams;
+  clahe_params: {
+    clip_limit: number;
+    tile_grid_size: [number, number];
+    source: string;
+  };
 }
 
 interface CiiScoreEntry {
@@ -78,14 +104,20 @@ interface PreprocessResult {
   output_video_path?: string | null;
 }
 
-interface LogLine {
-  tag: string;
-  tagColor: string;
-  message: string;
-}
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-// ─── Pipeline step definitions ─────────────────────────────────────────────
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "https://viscrete-core.shares.zrok.io";
 
+const ALREADY_PREPROCESSED = new Set([
+  "preprocessed",
+  "detecting",
+  "detected",
+  "reporting",
+  "completed",
+]);
+
+// Fallback step names used before pipeline_init fires or for already-done jobs
 const IMAGE_STEPS = [
   "Feature Extraction",
   "Clustering",
@@ -93,7 +125,6 @@ const IMAGE_STEPS = [
   "CLAHE Enhancement",
   "Bilateral Filter",
 ];
-
 const VIDEO_STEPS = [
   "Frame Sampling",
   "Median Frame Construction",
@@ -102,165 +133,44 @@ const VIDEO_STEPS = [
   "Save Output",
 ];
 
-type StepState = "pending" | "active" | "completed" | "failed";
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Statuses that mean preprocessing already ran — no need to re-run
-const ALREADY_PREPROCESSED = new Set([
-  "preprocessed", "detecting", "detected", "reporting", "completed",
-]);
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://viscrete-core.shares.zrok.io";
-
-// ─── Step descriptions (static) ────────────────────────────────────────────
-
-const STEP_DESCRIPTIONS: Record<string, string> = {
-  "Feature Extraction":      "Extracting visual feature vectors from each image for downstream clustering analysis.",
-  "Clustering":              "Grouping images with similar features (brightness, contrast, texture) to minimize IMOCS runs.",
-  "IMOCS Optimization":      "Running IMOCS algorithm on cluster representatives to compute optimal CLAHE parameters.",
-  "CLAHE Enhancement":       "Applying Contrast Limited Adaptive Histogram Equalization with cluster-specific parameters.",
-  "Bilateral Filter":        "Applying edge-preserving bilateral filter to reduce noise while retaining defect edges.",
-  "Frame Sampling":          "Sampling key frames from the video at regular intervals for efficient processing.",
-  "Median Frame Construction":"Constructing a median reference frame to remove transient noise from the video.",
-  "Frame Processing":        "Applying CLAHE and bilateral filtering to each sampled frame using IMOCS parameters.",
-  "Save Output":             "Writing all processed frames and pipeline metadata to the output directory.",
-};
-
-// ─── Dynamic log generator — uses real job data ─────────────────────────────
-
-function getStepLogs(stepLabel: string, fileCount: number): LogLine[] {
-  const n = Math.max(fileCount, 1);
-  // Split n images into 4 roughly-equal batches
-  const bSize = Math.ceil(n / 4);
-  const b = [bSize, bSize, bSize, Math.max(1, n - bSize * 3)];
-  // Split n images into 3 batches for bilateral filter
-  const bf = [Math.ceil(n / 3), Math.ceil(n / 3), Math.max(1, n - Math.ceil(n / 3) * 2)];
-  // Estimated cluster count based on file count
-  const estK = Math.max(2, Math.min(8, Math.ceil(n / 10)));
-
-  switch (stepLabel) {
-    case "Feature Extraction":
-      return [
-        { tag: "[INFO]", tagColor: "text-cyan-400",    message: `Loading ${n} image${n !== 1 ? "s" : ""} into memory...` },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: "Initializing CNN backbone for 512-dim embedding extraction..." },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: `Processing batch 1/4 (${b[0]} images)...` },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: `Batch 1/4 done. Avg embedding norm: 0.99.` },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: `Processing batch 2/4 (${b[1]} images)...` },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: `Batch 2/4 done. Avg embedding norm: 1.00.` },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: `Processing batch 3/4 (${b[2]} images)...` },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: `Batch 3/4 done. Avg embedding norm: 0.98.` },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: `Processing batch 4/4 (${b[3]} images)...` },
-        { tag: "[FEAT]", tagColor: "text-yellow-400",  message: `Batch 4/4 done. All embeddings extracted.` },
-        { tag: "[INFO]", tagColor: "text-cyan-400",    message: "Normalizing feature vectors to unit length..." },
-        { tag: "[OK]",   tagColor: "text-emerald-400", message: `Feature extraction complete. ${n} vectors cached to disk.` },
-      ];
-
-    case "Clustering":
-      return [
-        { tag: "[INFO]",    tagColor: "text-cyan-400",    message: "Initializing Clustering engine (K-Means++)..." },
-        { tag: "[INFO]",    tagColor: "text-cyan-400",    message: `Loading feature vectors for ${n} images. Dimensions: 512. Format: float32.` },
-        { tag: "[INFO]",    tagColor: "text-cyan-400",    message: `Target clusters: ${estK}. Selecting initial centers via K-Means++ seeding...` },
-        { tag: "[K-MEANS]", tagColor: "text-yellow-400",  message: `Iteration 1: computing cluster assignments for ${n} points...` },
-        { tag: "[K-MEANS]", tagColor: "text-yellow-400",  message: "Iteration 1 done. Centers updated. Max shift: 14.327." },
-        { tag: "[K-MEANS]", tagColor: "text-yellow-400",  message: `Iteration 2: reassigning ${n} points...` },
-        { tag: "[K-MEANS]", tagColor: "text-yellow-400",  message: "Iteration 2 done. Centers updated. Max shift: 6.081." },
-        { tag: "[K-MEANS]", tagColor: "text-yellow-400",  message: `Iteration 3: small center movement detected...` },
-        { tag: "[K-MEANS]", tagColor: "text-yellow-400",  message: "Iteration 3 done. Max shift: 1.204." },
-        { tag: "[K-MEANS]", tagColor: "text-yellow-400",  message: "Iteration 4: convergence check..." },
-        { tag: "[K-MEANS]", tagColor: "text-yellow-400",  message: "Converged. Max shift: 0.003 < threshold 0.010." },
-        { tag: "[OK]",      tagColor: "text-emerald-400", message: `Clustering complete. ${estK} clusters formed from ${n} images.` },
-      ];
-
-    case "IMOCS Optimization":
-      return [
-        { tag: "[INFO]",  tagColor: "text-cyan-400",    message: "Initializing IMOCS optimizer..." },
-        { tag: "[INFO]",  tagColor: "text-cyan-400",    message: "Loading cluster representative images..." },
-        { tag: "[IMOCS]", tagColor: "text-yellow-400",  message: "Cluster 1: running iterative optimization loop..." },
-        { tag: "[IMOCS]", tagColor: "text-yellow-400",  message: "Cluster 1: optimal clip_limit found. Contrast score: 0.87." },
-        { tag: "[IMOCS]", tagColor: "text-yellow-400",  message: "Cluster 2: running iterative optimization loop..." },
-        { tag: "[IMOCS]", tagColor: "text-yellow-400",  message: "Cluster 2: optimal clip_limit found. Contrast score: 0.92." },
-        { tag: "[IMOCS]", tagColor: "text-yellow-400",  message: "Cluster 3: running iterative optimization loop..." },
-        { tag: "[IMOCS]", tagColor: "text-yellow-400",  message: "Cluster 3: optimal clip_limit found. Contrast score: 0.89." },
-        { tag: "[OK]",    tagColor: "text-emerald-400", message: "IMOCS optimization complete. CLAHE params locked per cluster." },
-      ];
-
-    case "CLAHE Enhancement":
-      return [
-        { tag: "[INFO]",  tagColor: "text-cyan-400",    message: `Applying CLAHE to ${n} images using per-cluster parameters...` },
-        { tag: "[CLAHE]", tagColor: "text-yellow-400",  message: `Cluster 1: processing images with optimized clip & tile params...` },
-        { tag: "[CLAHE]", tagColor: "text-yellow-400",  message: "Cluster 1 done. Avg PSNR improvement: +4.2 dB." },
-        { tag: "[CLAHE]", tagColor: "text-yellow-400",  message: `Cluster 2: processing images with optimized clip & tile params...` },
-        { tag: "[CLAHE]", tagColor: "text-yellow-400",  message: "Cluster 2 done. Avg PSNR improvement: +5.1 dB." },
-        { tag: "[CLAHE]", tagColor: "text-yellow-400",  message: `Cluster 3: processing images with optimized clip & tile params...` },
-        { tag: "[CLAHE]", tagColor: "text-yellow-400",  message: "Cluster 3 done. Avg PSNR improvement: +4.7 dB." },
-        { tag: "[OK]",    tagColor: "text-emerald-400", message: `CLAHE enhancement complete. ${n} images enhanced.` },
-      ];
-
-    case "Bilateral Filter":
-      return [
-        { tag: "[INFO]",  tagColor: "text-cyan-400",    message: `Applying edge-preserving bilateral filter to ${n} images...` },
-        { tag: "[BFILT]", tagColor: "text-yellow-400",  message: "Params — sigma_spatial: 1.5  sigma_color: 30.0  diameter: 9." },
-        { tag: "[BFILT]", tagColor: "text-yellow-400",  message: `Filtering batch 1/3 (${bf[0]} images)...` },
-        { tag: "[BFILT]", tagColor: "text-yellow-400",  message: `Batch 1/3 done.` },
-        { tag: "[BFILT]", tagColor: "text-yellow-400",  message: `Filtering batch 2/3 (${bf[1]} images)...` },
-        { tag: "[BFILT]", tagColor: "text-yellow-400",  message: `Batch 2/3 done.` },
-        { tag: "[BFILT]", tagColor: "text-yellow-400",  message: `Filtering batch 3/3 (${bf[2]} images)...` },
-        { tag: "[OK]",    tagColor: "text-emerald-400", message: `Bilateral filtering complete. Writing ${n} processed images to disk...` },
-      ];
-
-    case "Frame Sampling":
-      return [
-        { tag: "[INFO]",   tagColor: "text-cyan-400",    message: "Opening video stream..." },
-        { tag: "[SAMPLE]", tagColor: "text-yellow-400",  message: "Analyzing video metadata — detecting resolution and framerate..." },
-        { tag: "[SAMPLE]", tagColor: "text-yellow-400",  message: "Sampling strategy: uniform interval, every 15 frames." },
-        { tag: "[SAMPLE]", tagColor: "text-yellow-400",  message: "Extracting key frames... 25% done." },
-        { tag: "[SAMPLE]", tagColor: "text-yellow-400",  message: "Extracting key frames... 75% done." },
-        { tag: "[OK]",     tagColor: "text-emerald-400", message: "Frame sampling complete. Key frames saved to disk." },
-      ];
-
-    case "Median Frame Construction":
-      return [
-        { tag: "[INFO]",   tagColor: "text-cyan-400",    message: "Loading sampled frames into memory..." },
-        { tag: "[MEDIAN]", tagColor: "text-yellow-400",  message: "Computing pixel-wise median for noise suppression..." },
-        { tag: "[MEDIAN]", tagColor: "text-yellow-400",  message: "Median computation: 50% complete..." },
-        { tag: "[OK]",     tagColor: "text-emerald-400", message: "Median reference frame constructed and saved." },
-      ];
-
-    case "Frame Processing":
-      return [
-        { tag: "[INFO]", tagColor: "text-cyan-400",    message: "Applying CLAHE + bilateral filter to each sampled frame..." },
-        { tag: "[PROC]", tagColor: "text-yellow-400",  message: "Processing frame batch 1/3..." },
-        { tag: "[PROC]", tagColor: "text-yellow-400",  message: "Processing frame batch 2/3..." },
-        { tag: "[PROC]", tagColor: "text-yellow-400",  message: "Processing frame batch 3/3..." },
-        { tag: "[OK]",   tagColor: "text-emerald-400", message: "All frames processed and saved." },
-      ];
-
-    case "Save Output":
-      return [
-        { tag: "[INFO]", tagColor: "text-cyan-400",    message: "Collecting processed frames for output..." },
-        { tag: "[SAVE]", tagColor: "text-yellow-400",  message: "Writing processed frames to output directory..." },
-        { tag: "[SAVE]", tagColor: "text-yellow-400",  message: "Generating pipeline metadata and result JSON..." },
-        { tag: "[OK]",   tagColor: "text-emerald-400", message: "All outputs saved. Pipeline complete." },
-      ];
-
-    default:
-      return [
-        { tag: "[INFO]", tagColor: "text-cyan-400", message: `Running ${stepLabel}...` },
-      ];
-  }
+function getTimestamp(iso?: string): string {
+  const d = iso ? new Date(iso) : new Date();
+  return [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((v) => String(v).padStart(2, "0"))
+    .join(":");
 }
-
-// ─── Helper: format seconds as HH:MM:SS ──────────────────────────────────────
 
 function formatTime(totalSecs: number): string {
   const h = Math.floor(totalSecs / 3600);
   const m = Math.floor((totalSecs % 3600) / 60);
   const s = totalSecs % 60;
-  return [h, m, s].map(v => String(v).padStart(2, "0")).join(":");
+  return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
 }
 
-// ─── Before/After toggle ──────────────────────────────────────────────────────
+function makePendingSteps(names: string[]): StepState[] {
+  return names.map((name, i) => ({
+    step: i + 1,
+    name,
+    status: "pending",
+    duration_sec: null,
+    detail: null,
+    progress: null,
+    error: null,
+  }));
+}
 
-function BeforeAfterToggle({ original, processed, label, ciiScore, originalContrast, processedContrast }: {
+// ─── BeforeAfterToggle ────────────────────────────────────────────────────────
+
+function BeforeAfterToggle({
+  original,
+  processed,
+  label,
+  ciiScore,
+  originalContrast,
+  processedContrast,
+}: {
   original: string;
   processed: string;
   label: string;
@@ -269,23 +179,23 @@ function BeforeAfterToggle({ original, processed, label, ciiScore, originalContr
   processedContrast?: number | null;
 }) {
   const [showProcessed, setShowProcessed] = useState(false);
-
-  // Active contrast value changes with the toggle
   const activeContrast = showProcessed ? processedContrast : originalContrast;
 
   return (
     <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800">
-      {/* Header with filename + toggle + CII */}
       <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate min-w-0">{label}</span>
+        <span className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate min-w-0">
+          {label}
+        </span>
         <div className="flex items-center gap-2 shrink-0">
-          {/* CII badge — always visible once data is loaded */}
           {ciiScore != null && (
             <div
               className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800"
               title={`Contrast Improvement Index\nOriginal contrast: ${originalContrast?.toFixed(6) ?? "—"}\nProcessed contrast: ${processedContrast?.toFixed(6) ?? "—"}`}
             >
-              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">CII</span>
+              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
+                CII
+              </span>
               <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 font-mono tabular-nums">
                 {ciiScore.toFixed(2)}
               </span>
@@ -296,7 +206,6 @@ function BeforeAfterToggle({ original, processed, label, ciiScore, originalContr
               )}
             </div>
           )}
-          {/* Toggle */}
           <div className="flex items-center gap-1 bg-gray-200 dark:bg-gray-700 rounded-lg p-0.5">
             <button
               onClick={() => setShowProcessed(false)}
@@ -323,8 +232,6 @@ function BeforeAfterToggle({ original, processed, label, ciiScore, originalContr
           </div>
         </div>
       </div>
-
-      {/* Image */}
       <div className="relative overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -354,35 +261,47 @@ function BeforeAfterToggle({ original, processed, label, ciiScore, originalContr
   );
 }
 
-// ─── Cluster Card ─────────────────────────────────────────────────────────────
+// ─── ClusterCard ──────────────────────────────────────────────────────────────
 
 function ClusterCard({ info }: { info: ClusterInfo }) {
   return (
     <div className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-bold text-gray-800 dark:text-white">Cluster {info.cluster_id}</span>
-        <span className={cn(
-          "px-2 py-0.5 rounded-full text-[11px] font-semibold",
-          info.clahe_params.source === "imocs" || info.clahe_params.source === "imocs_video_median"
-            ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
-            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-        )}>
-          {info.clahe_params.source === "imocs_video_median" ? "IMOCS Video" : info.clahe_params.source.toUpperCase()}
+        <span className="text-sm font-bold text-gray-800 dark:text-white">
+          Cluster {info.cluster_id}
+        </span>
+        <span
+          className={cn(
+            "px-2 py-0.5 rounded-full text-[11px] font-semibold",
+            info.clahe_params.source === "imocs" ||
+              info.clahe_params.source === "imocs_video_median"
+              ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+              : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+          )}
+        >
+          {info.clahe_params.source === "imocs_video_median"
+            ? "IMOCS Video"
+            : info.clahe_params.source.toUpperCase()}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
         <div>
           <p className="text-gray-400 dark:text-gray-500">Members</p>
-          <p className="font-medium text-gray-700 dark:text-gray-300">{info.member_count} images</p>
+          <p className="font-medium text-gray-700 dark:text-gray-300">
+            {info.member_count} images
+          </p>
         </div>
         <div>
           <p className="text-gray-400 dark:text-gray-500">CLAHE Clip</p>
-          <p className="font-medium text-gray-700 dark:text-gray-300">{info.clahe_params.clip_limit.toFixed(2)}</p>
+          <p className="font-medium text-gray-700 dark:text-gray-300">
+            {info.clahe_params.clip_limit.toFixed(2)}
+          </p>
         </div>
         <div className="col-span-2">
           <p className="text-gray-400 dark:text-gray-500">Tile Grid</p>
           <p className="font-medium text-gray-700 dark:text-gray-300">
-            {info.clahe_params.tile_grid_size[0]} × {info.clahe_params.tile_grid_size[1]}
+            {info.clahe_params.tile_grid_size[0]} ×{" "}
+            {info.clahe_params.tile_grid_size[1]}
           </p>
         </div>
       </div>
@@ -390,195 +309,13 @@ function ClusterCard({ info }: { info: ClusterInfo }) {
   );
 }
 
-// ─── Step node ────────────────────────────────────────────────────────────────
+// ─── VideoPlayer ──────────────────────────────────────────────────────────────
 
-function StepNode({
-  label,
-  index,
-  state,
-  detail,
-  duration,
-  isLast,
-  prevCompleted,
-}: {
-  label: string;
-  index: number;
-  state: StepState;
-  detail?: string;
-  duration?: number;
-  isLast: boolean;
-  prevCompleted: boolean;
-}) {
-  return (
-    <div className="flex items-start min-w-0">
-      <div className="flex flex-col items-center gap-1.5 px-1">
-        {/* Circle */}
-        <div className={cn(
-          "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-          state === "pending" && "border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800",
-          state === "active" && "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 shadow-lg shadow-emerald-500/20",
-          state === "completed" && "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30",
-          state === "failed" && "border-red-500 bg-red-50 dark:bg-red-950/30",
-        )}>
-          {state === "pending" && <span className="text-xs font-bold text-gray-400">{index + 1}</span>}
-          {state === "active" && <Loader2 className="w-5 h-5 text-emerald-500 animate-spin" />}
-          {state === "completed" && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-          {state === "failed" && <XCircle className="w-5 h-5 text-red-500" />}
-        </div>
-
-        {/* Label */}
-        <span className={cn(
-          "text-[11px] font-medium text-center w-20 leading-tight",
-          state === "pending" && "text-gray-400",
-          state === "active" && "text-emerald-600 dark:text-emerald-400",
-          state === "completed" && "text-emerald-600 dark:text-emerald-400",
-          state === "failed" && "text-red-500",
-        )}>
-          {label}
-        </span>
-
-        {/* Duration */}
-        {state === "completed" && duration != null && (
-          <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
-            <Clock className="w-2.5 h-2.5" />{duration.toFixed(2)}s
-          </span>
-        )}
-
-        {/* Detail */}
-        {(state === "completed" || state === "failed") && detail && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 text-center w-24 leading-tight">
-            {detail}
-          </span>
-        )}
-      </div>
-
-      {/* Connector */}
-      {!isLast && (
-        <div className={cn(
-          "flex-shrink-0 h-0.5 w-8 mt-5 transition-colors duration-500",
-          prevCompleted ? "bg-emerald-400" : "bg-gray-200 dark:bg-gray-700"
-        )} />
-      )}
-    </div>
-  );
-}
-
-// ─── Execution Dashboard (shown while running) ────────────────────────────────
-
-function ExecutionDashboard({
+function VideoPlayer({
+  src,
+  totalFrames,
   steps,
-  stepStates,
-  elapsedSecs,
-  stepProgress,
-  visibleLogs,
-  logEndRef,
 }: {
-  steps: string[];
-  stepStates: StepState[];
-  elapsedSecs: number;
-  stepProgress: number;
-  visibleLogs: LogLine[];
-  logEndRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const activeIdx = stepStates.findIndex(s => s === "active");
-  const stepLabel = activeIdx >= 0 ? steps[activeIdx] : null;
-  const description = stepLabel ? (STEP_DESCRIPTIONS[stepLabel] ?? "Processing…") : null;
-
-  if (!stepLabel) return null;
-
-  return (
-    <div className="mt-6 border-t border-gray-100 dark:border-gray-800 pt-6 space-y-5">
-
-      {/* ── Step header ── */}
-      <div className="flex items-start gap-3">
-        <Loader2 className="w-5 h-5 text-emerald-500 animate-spin mt-0.5 shrink-0" />
-        <div className="min-w-0">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">
-            {stepLabel}
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {description}
-          </p>
-        </div>
-      </div>
-
-      {/* ── Progress bar ── */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Progress</span>
-          <span className="text-xs font-bold text-emerald-500">{stepProgress}%</span>
-        </div>
-        <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-[1400ms] ease-out"
-            style={{
-              width: `${stepProgress}%`,
-              background: "linear-gradient(90deg, #10b981, #2ca75d)",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* ── Metric cards ── */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* STATUS */}
-        <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Status</span>
-          </div>
-          <p className="text-sm font-bold text-emerald-500">In Progress</p>
-        </div>
-
-        {/* EXECUTION TIME */}
-        <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <Clock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Execution Time</span>
-          </div>
-          <p className="text-sm font-bold text-gray-900 dark:text-white font-mono tabular-nums">
-            {formatTime(elapsedSecs)}
-          </p>
-        </div>
-      </div>
-
-      {/* ── Terminal log ── */}
-      <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800">
-        {/* Terminal header */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <Terminal className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
-              Intermediate Output Preview
-            </span>
-          </div>
-          <span className="text-[11px] text-gray-400 font-mono">
-            step {activeIdx + 1}/{steps.length}
-          </span>
-        </div>
-
-        {/* Terminal body */}
-        <div className="bg-[#0d1117] p-4 h-52 overflow-y-auto font-mono text-[12px] leading-6 space-y-0.5">
-          {visibleLogs.length === 0 ? (
-            <span className="text-gray-600">Waiting for output…</span>
-          ) : (
-            visibleLogs.filter((line): line is LogLine => !!line).map((line, i) => (
-              <div key={i} className="flex gap-2">
-                <span className={cn("shrink-0 font-bold", line.tagColor)}>{line.tag}</span>
-                <span className="text-gray-300 break-all">{line.message}</span>
-              </div>
-            ))
-          )}
-          <div ref={logEndRef} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Video Player ─────────────────────────────────────────────────────────────
-
-function VideoPlayer({ src, totalFrames, steps }: {
   src: string;
   totalFrames: number;
   steps: PipelineStep[];
@@ -594,17 +331,17 @@ function VideoPlayer({ src, totalFrames, steps }: {
         <Video className="w-4 h-4" />
         Preprocessed Video Output
       </h2>
-
       <div className="w-full bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-        {/* Video area */}
-        <div className="relative w-full bg-black flex items-center justify-center" style={{ minHeight: 320 }}>
+        <div
+          className="relative w-full bg-black flex items-center justify-center"
+          style={{ minHeight: 320 }}
+        >
           {isLoading && !hasError && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 z-10">
               <Loader2 className="w-8 h-8 animate-spin" />
               <span className="text-sm">Loading video…</span>
             </div>
           )}
-
           {hasError ? (
             <div className="flex flex-col items-center gap-3 py-12 px-6 text-gray-500 dark:text-gray-400 w-full">
               <Video className="w-12 h-12 text-gray-400 dark:text-gray-600" />
@@ -631,27 +368,362 @@ function VideoPlayer({ src, totalFrames, steps }: {
               controls
               className="w-full max-h-[480px] object-contain"
               onLoadedData={() => setIsLoading(false)}
-              onError={() => { setIsLoading(false); setHasError(true); }}
+              onError={() => {
+                setIsLoading(false);
+                setHasError(true);
+              }}
             />
           )}
         </div>
-
-        {/* Metadata strip */}
         <div className="grid grid-cols-3 divide-x divide-gray-100 dark:divide-gray-800 border-t border-gray-100 dark:border-gray-800">
           <div className="px-5 py-3">
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Frames processed</p>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totalFrames}</p>
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">
+              Frames processed
+            </p>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+              {totalFrames}
+            </p>
           </div>
           <div className="px-5 py-3">
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Pipeline steps</p>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{steps.length}</p>
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">
+              Pipeline steps
+            </p>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+              {steps.length}
+            </p>
           </div>
           <div className="px-5 py-3">
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Total time</p>
-            <p className="text-sm font-semibold font-mono text-gray-800 dark:text-gray-100">{totalSec.toFixed(2)}s</p>
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">
+              Total time
+            </p>
+            <p className="text-sm font-semibold font-mono text-gray-800 dark:text-gray-100">
+              {totalSec.toFixed(2)}s
+            </p>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── StepItem ─────────────────────────────────────────────────────────────────
+
+function StepItem({ step, isLast }: { step: StepState; isLast: boolean }) {
+  return (
+    <div className="flex gap-4">
+      {/* Icon + connector column */}
+      <div className="flex flex-col items-center">
+        <div
+          className={cn(
+            "w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-300",
+            step.status === "pending" &&
+              "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950",
+            step.status === "in_progress" &&
+              "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 shadow-sm shadow-emerald-500/30",
+            step.status === "completed" &&
+              "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30",
+            step.status === "failed" &&
+              "border-red-500 bg-red-50 dark:bg-red-950/30"
+          )}
+        >
+          {step.status === "pending" && (
+            <span className="text-xs font-bold text-gray-400 dark:text-gray-600">
+              {step.step}
+            </span>
+          )}
+          {step.status === "in_progress" && (
+            <Loader2 className="w-3.5 h-3.5 text-emerald-500 animate-spin" />
+          )}
+          {step.status === "completed" && (
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+          )}
+          {step.status === "failed" && (
+            <XCircle className="w-3.5 h-3.5 text-red-500" />
+          )}
+        </div>
+        {!isLast && (
+          <div
+            className={cn(
+              "w-px flex-1 min-h-[1.5rem] mt-1 transition-colors duration-500",
+              step.status === "completed"
+                ? "bg-emerald-400 dark:bg-emerald-600"
+                : "bg-gray-200 dark:bg-gray-800"
+            )}
+          />
+        )}
+      </div>
+
+      {/* Content column */}
+      <div className={cn("flex-1 min-w-0", !isLast && "pb-5")}>
+        <div className="flex items-start justify-between gap-2">
+          <span
+            className={cn(
+              "text-sm font-semibold leading-5",
+              step.status === "pending" &&
+                "text-gray-400 dark:text-gray-600",
+              step.status === "in_progress" &&
+                "text-gray-900 dark:text-white",
+              step.status === "completed" &&
+                "text-gray-900 dark:text-white",
+              step.status === "failed" &&
+                "text-red-600 dark:text-red-400"
+            )}
+          >
+            {step.name}
+          </span>
+          {step.status === "completed" && step.duration_sec != null && (
+            <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 shrink-0 mt-0.5 font-mono tabular-nums">
+              <Clock className="w-3 h-3" />
+              {step.duration_sec.toFixed(2)}s
+            </span>
+          )}
+        </div>
+
+        {step.status === "completed" && step.detail && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            {step.detail}
+          </p>
+        )}
+
+        {/* Video frame progress bar — only shown for in_progress steps with a percent */}
+        {step.status === "in_progress" && step.progress != null && (
+          <div className="mt-2 max-w-sm">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-gray-500 dark:text-gray-400 truncate min-w-0 mr-2">
+                {step.detail || "Processing…"}
+              </span>
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 shrink-0 tabular-nums">
+                {step.progress}%
+              </span>
+            </div>
+            <div className="h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${step.progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {step.status === "failed" && step.error && (
+          <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
+            {step.error}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── PreprocessingStepper ─────────────────────────────────────────────────────
+
+function PreprocessingStepper({
+  steps,
+  completedSummary,
+  elapsedSecs,
+  isRunning,
+}: {
+  steps: StepState[];
+  completedSummary: CompletedSummary | null;
+  elapsedSecs: number;
+  isRunning: boolean;
+}) {
+  if (steps.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-600 py-4">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Connecting to pipeline…
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Vertical step list */}
+      <div>
+        {steps.map((step, i) => (
+          <StepItem key={step.step} step={step} isLast={i === steps.length - 1} />
+        ))}
+      </div>
+
+      {/* Elapsed timer while running */}
+      {isRunning && (
+        <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <Clock className="w-3.5 h-3.5" />
+          <span>
+            Elapsed:{" "}
+            <span className="font-mono font-semibold text-gray-700 dark:text-gray-200 tabular-nums">
+              {formatTime(elapsedSecs)}
+            </span>
+          </span>
+        </div>
+      )}
+
+      {/* Summary card after completion */}
+      {completedSummary && (
+        <div className="mt-5 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+          <div className="flex items-center gap-2 mb-3">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+              Pipeline Complete
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                Files Processed
+              </p>
+              <p className="text-2xl font-bold font-mono text-gray-900 dark:text-white tabular-nums">
+                {completedSummary.total_processed}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                Pipeline Type
+              </p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white capitalize mt-1.5">
+                {completedSummary.pipeline_type}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                Total Duration
+              </p>
+              <p className="text-2xl font-bold font-mono text-gray-900 dark:text-white tabular-nums">
+                {completedSummary.duration_sec.toFixed(2)}s
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PreprocessingTerminal ────────────────────────────────────────────────────
+
+function PreprocessingTerminal({ lines }: { lines: TerminalLine[] }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [visibleLines, setVisibleLines] = useState<TerminalLine[]>([]);
+  const [copied, setCopied] = useState(false);
+  const lastSyncedCountRef = useRef(0);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Sync new lines from parent into visibleLines
+  useEffect(() => {
+    if (lines.length > lastSyncedCountRef.current) {
+      const newLines = lines.slice(lastSyncedCountRef.current);
+      lastSyncedCountRef.current = lines.length;
+      setVisibleLines((prev) => {
+        const merged = [...prev, ...newLines];
+        return merged.length > 500 ? merged.slice(merged.length - 500) : merged;
+      });
+    }
+  }, [lines]);
+
+  // Auto-scroll to bottom on new lines
+  useEffect(() => {
+    if (!collapsed) {
+      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [visibleLines, collapsed]);
+
+  function handleClear() {
+    lastSyncedCountRef.current = lines.length;
+    setVisibleLines([]);
+  }
+
+  async function handleCopy() {
+    const text = lines
+      .map((l) => {
+        const tag = l.step != null ? `STEP ${l.step}` : "PIPELINE";
+        return `[${l.timestamp}] [${tag.padEnd(8)}] ${l.message}`;
+      })
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard API unavailable */
+    }
+  }
+
+  return (
+    <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition cursor-pointer"
+        >
+          <Terminal className="w-4 h-4 text-gray-400" />
+          <span>
+            {collapsed ? `Logs (${lines.length})` : "Terminal Output"}
+          </span>
+          {collapsed ? (
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+          ) : (
+            <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+          )}
+        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition cursor-pointer"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            {copied ? "Copied!" : "Copy logs"}
+          </button>
+          <button
+            onClick={handleClear}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear
+          </button>
+        </div>
+      </div>
+
+      {/* Terminal body */}
+      {!collapsed && (
+        <div className="bg-[#0b0d10] p-4 h-72 overflow-y-auto font-mono text-[11.5px] leading-[1.65] scroll-smooth">
+          {visibleLines.length === 0 ? (
+            <span className="text-gray-600">Waiting for pipeline output…</span>
+          ) : (
+            visibleLines.map((line, i) => {
+              const tag =
+                line.step != null ? `STEP ${line.step}` : "PIPELINE";
+              const padded = tag.padEnd(8);
+              return (
+                <div key={i} className="whitespace-pre-wrap break-all">
+                  <span className="text-gray-600 select-none">
+                    [{line.timestamp}]
+                  </span>{" "}
+                  <span
+                    className={cn(
+                      "font-semibold select-none",
+                      line.step != null ? "text-blue-500" : "text-gray-500"
+                    )}
+                  >
+                    [{padded}]
+                  </span>{" "}
+                  <span
+                    className={cn(
+                      line.level === "warning" && "text-[#FACC15]",
+                      line.level === "error" && "text-[#F87171]",
+                      line.level === "info" && "text-gray-200"
+                    )}
+                  >
+                    {line.message}
+                  </span>
+                </div>
+              );
+            })
+          )}
+          <div ref={logEndRef} />
+        </div>
+      )}
     </div>
   );
 }
@@ -662,318 +734,585 @@ export default function PreprocessPage() {
   const { job_id } = useParams<{ job_id: string }>();
   const router = useRouter();
 
-  // Job metadata (fetched on mount)
   const [jobMeta, setJobMeta] = useState<JobStatus | null>(null);
   const [metaError, setMetaError] = useState<string | null>(null);
-
-  // Pipeline steps (labels change once we know input_type)
-  const [steps, setSteps] = useState<string[]>(IMAGE_STEPS);
-  const [stepStates, setStepStates] = useState<StepState[]>(IMAGE_STEPS.map(() => "pending"));
-  // Real step data from API response (populated after completion)
-  const [stepDetails, setStepDetails] = useState<PipelineStep[]>([]);
-
+  const [stepStates, setStepStates] = useState<StepState[]>([]);
+  const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
+  const [completedSummary, setCompletedSummary] =
+    useState<CompletedSummary | null>(null);
   const [result, setResult] = useState<PreprocessResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const [clusterOpen, setClusterOpen] = useState(true);
-
-  // ── Execution dashboard state ────────────────────────────────────────────
   const [elapsedSecs, setElapsedSecs] = useState(0);
-  const [stepProgress, setStepProgress] = useState(0);
-  const [visibleLogs, setVisibleLogs] = useState<LogLine[]>([]);
+  const [retryCount, setRetryCount] = useState(0);
 
-  const hasStarted = useRef(false);
-  const jobMetaRef = useRef<JobStatus | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const logIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastActiveIdxRef = useRef(-1);
-  const startTimeRef = useRef(0);
-  const logEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Cleanup polling on unmount
-  useEffect(() => () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
-  }, []);
-
-  // Keep jobMetaRef in sync so effects can read current fileCount without it as a dep
-  useEffect(() => { jobMetaRef.current = jobMeta; }, [jobMeta]);
-
-  const CACHE_KEY = `preprocess_result_${job_id}`;
-
-  // ── Elapsed time timer ───────────────────────────────────────────────────
+  // Elapsed timer — driven by isRunning
   useEffect(() => {
     if (!isRunning) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
-    setElapsedSecs(0);
-    startTimeRef.current = Date.now();
+    const start = Date.now();
     timerRef.current = setInterval(() => {
-      setElapsedSecs(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      setElapsedSecs(Math.floor((Date.now() - start) / 1000));
     }, 1000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isRunning]);
 
-  // ── Step progress + log animation ────────────────────────────────────────
+  function handleRetry() {
+    setStepStates([]);
+    setTerminalLines([]);
+    setGlobalError(null);
+    setIsRunning(false);
+    setIsComplete(false);
+    setCompletedSummary(null);
+    setElapsedSecs(0);
+    setRetryCount((c) => c + 1);
+  }
+
+  // ── Master effect: fetch job + WebSocket + polling fallback ──────────────────
   useEffect(() => {
-    const idx = stepStates.findIndex(s => s === "active");
-    if (idx === -1 || idx === lastActiveIdxRef.current) return;
-    lastActiveIdxRef.current = idx;
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let receivedCompleted = false;
 
-    const stepLabel = steps[idx];
-    const fileCount = jobMetaRef.current?.file_count ?? 0;
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
-    // Animate progress: 0 → 85% over ~1.4s via CSS transition
-    setStepProgress(0);
-    if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
-    progressTimerRef.current = setTimeout(() => setStepProgress(85), 80);
+    function addLine(line: TerminalLine) {
+      if (cancelled) return;
+      setTerminalLines((prev) => {
+        const next = [...prev, line];
+        return next.length > 500 ? next.slice(1) : next;
+      });
+    }
 
-    // Append separator + step header (never clear the terminal)
-    const separator: LogLine = { tag: "─────", tagColor: "text-gray-700", message: "" };
-    const header: LogLine = {
-      tag: `[STEP ${idx + 1}/${steps.length}]`,
-      tagColor: "text-blue-400",
-      message: `${stepLabel}`,
-    };
-    setVisibleLogs(prev => idx === 0 ? [header] : [...prev, separator, header]);
+    function addPipelineLine(message: string, level: LogLevel = "info") {
+      addLine({
+        timestamp: getTimestamp(),
+        step: null,
+        name: null,
+        level,
+        message,
+      });
+    }
 
-    // Reveal log lines one by one using real job data
-    if (logIntervalRef.current) clearInterval(logIntervalRef.current);
-    const queue = getStepLogs(stepLabel, fileCount);
-    let logIdx = 0;
-    logIntervalRef.current = setInterval(() => {
-      if (logIdx < queue.length) {
-        const item = queue[logIdx];
-        logIdx++;
-        if (item) setVisibleLogs(prev => [...prev, item]);
-      } else {
-        if (logIntervalRef.current) clearInterval(logIntervalRef.current);
-      }
-    }, 320);
+    // ── Result fetch (called after completed event) ───────────────────────────
 
-    return () => {
-      if (logIntervalRef.current) clearInterval(logIntervalRef.current);
-    };
-  }, [stepStates, steps]);
-
-  // ── Auto-scroll terminal to bottom ───────────────────────────────────────
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [visibleLogs]);
-
-  // ── Fetch job status on mount ────────────────────────────────────────────
-  useEffect(() => {
-    async function fetchJob() {
+    async function fetchResults() {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`);
+        const res = await fetch(
+          `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`
+        );
+        if (cancelled) return;
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: JobStatus = await res.json();
+        if (cancelled) return;
+        const r = data.preprocessing_result ?? null;
+        if (r) {
+          setResult(r);
+          try {
+            localStorage.setItem(
+              `preprocess_result_${job_id}`,
+              JSON.stringify(r)
+            );
+          } catch { /* quota */ }
+        } else {
+          addPipelineLine("Warning: could not load result data", "warning");
+          try {
+            const cached = localStorage.getItem(`preprocess_result_${job_id}`);
+            if (cached) setResult(JSON.parse(cached));
+          } catch { /* corrupt cache */ }
+        }
+      } catch {
+        if (cancelled) return;
+        addPipelineLine("Warning: could not load result data", "warning");
+        try {
+          const cached = localStorage.getItem(`preprocess_result_${job_id}`);
+          if (cached) setResult(JSON.parse(cached));
+        } catch { /* ignore */ }
+      }
+    }
 
-        const pipelineSteps = data.input_type === "video" ? VIDEO_STEPS : IMAGE_STEPS;
-        const alreadyDone = ALREADY_PREPROCESSED.has(data.status);
+    // ── Polling fallback ──────────────────────────────────────────────────────
 
-        // Set ref BEFORE setJobMeta so the auto-start effect sees it as guarded
-        if (alreadyDone) hasStarted.current = true;
+    function startPolling() {
+      if (pollInterval) return; // already polling
+      pollInterval = setInterval(async () => {
+        if (cancelled) return;
+        try {
+          const res = await fetch(
+            `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`
+          );
+          if (!res.ok || cancelled) return;
+          const data: JobStatus = await res.json();
+          if (cancelled) return;
+
+          if (data.status === "preprocessed") {
+            clearInterval(pollInterval!);
+            pollInterval = null;
+            const r = data.preprocessing_result ?? null;
+            if (r?.pipeline_steps?.length) {
+              const mapped = r.pipeline_steps.map(
+                (s): StepState => ({
+                  step: s.step,
+                  name: s.name,
+                  status: s.status === "completed" ? "completed" : "failed",
+                  duration_sec: s.duration_sec,
+                  detail: s.detail,
+                  progress: null,
+                  error: null,
+                })
+              );
+              setStepStates(mapped);
+              const totalDuration = r.pipeline_steps.reduce(
+                (acc, s) => acc + s.duration_sec,
+                0
+              );
+              setCompletedSummary({
+                total_processed: r.total_processed,
+                pipeline_type: r.pipeline_type,
+                duration_sec: totalDuration,
+              });
+              setResult(r);
+              try {
+                localStorage.setItem(
+                  `preprocess_result_${job_id}`,
+                  JSON.stringify(r)
+                );
+              } catch { /* quota */ }
+            } else {
+              // No step details — mark all completed
+              setStepStates((prev) =>
+                prev.map((s) => ({ ...s, status: "completed" }))
+              );
+              if (r) {
+                setResult(r);
+                setCompletedSummary({
+                  total_processed: r.total_processed,
+                  pipeline_type: r.pipeline_type,
+                  duration_sec: 0,
+                });
+              }
+            }
+            setIsRunning(false);
+            setIsComplete(true);
+          } else if (data.status === "failed") {
+            clearInterval(pollInterval!);
+            pollInterval = null;
+            setStepStates((prev) => {
+              const next = [...prev];
+              const activeIdx = next.findIndex(
+                (s) => s.status === "in_progress"
+              );
+              if (activeIdx >= 0) {
+                next[activeIdx] = {
+                  ...next[activeIdx],
+                  status: "failed",
+                  error: "Preprocessing failed on the server",
+                };
+              }
+              return next;
+            });
+            setGlobalError("Preprocessing failed on the server.");
+            setIsRunning(false);
+          }
+        } catch { /* transient network error — keep polling */ }
+      }, 3000);
+      pollRef.current = pollInterval;
+    }
+
+    // ── WebSocket message handler ─────────────────────────────────────────────
+
+    function handleMsg(msg: Record<string, unknown>) {
+      if (cancelled) return;
+      const ts = getTimestamp(msg.timestamp as string | undefined);
+
+      switch (msg.type as string) {
+        case "pipeline_init": {
+          const initSteps = (
+            msg.steps as Array<{ step: number; name: string }>
+          ).map(
+            (s): StepState => ({
+              step: s.step,
+              name: s.name,
+              status: "pending",
+              duration_sec: null,
+              detail: null,
+              progress: null,
+              error: null,
+            })
+          );
+          setStepStates(initSteps);
+          addLine({
+            timestamp: ts,
+            step: null,
+            name: null,
+            level: "info",
+            message: `Pipeline ready (${msg.pipeline_type})`,
+          });
+          break;
+        }
+
+        case "step_start": {
+          const step = msg.step as number;
+          const name = msg.name as string;
+          setStepStates((prev) =>
+            prev.map((s) =>
+              s.step === step ? { ...s, status: "in_progress" } : s
+            )
+          );
+          addLine({
+            timestamp: ts,
+            step,
+            name,
+            level: "info",
+            message: `▶ ${name} started`,
+          });
+          break;
+        }
+
+        case "step_done": {
+          const step = msg.step as number;
+          const name = msg.name as string;
+          const duration_sec = msg.duration_sec as number;
+          const detail = (msg.detail as string | null) ?? null;
+          setStepStates((prev) =>
+            prev.map((s) =>
+              s.step === step
+                ? { ...s, status: "completed", duration_sec, detail }
+                : s
+            )
+          );
+          addLine({
+            timestamp: ts,
+            step,
+            name,
+            level: "info",
+            message: `✓ ${name} completed in ${duration_sec}s${detail ? ` — ${detail}` : ""}`,
+          });
+          break;
+        }
+
+        case "step_progress": {
+          // No terminal output — only update progress bar for video step 4
+          const step = msg.step as number;
+          const percent = msg.percent as number;
+          const detail = (msg.detail as string | null) ?? null;
+          setStepStates((prev) =>
+            prev.map((s) =>
+              s.step === step
+                ? { ...s, progress: percent, detail: detail ?? s.detail }
+                : s
+            )
+          );
+          break;
+        }
+
+        case "log": {
+          addLine({
+            timestamp: ts,
+            step: (msg.step as number | null) ?? null,
+            name: (msg.name as string | null) ?? null,
+            level: ((msg.level as LogLevel) ?? "info") as LogLevel,
+            message: msg.message as string,
+          });
+          break;
+        }
+
+        case "error": {
+          const fatal = msg.fatal as boolean;
+          const step = (msg.step as number | null) ?? null;
+          const name = (msg.name as string | null) ?? null;
+          const message = msg.message as string;
+
+          if (fatal) {
+            setStepStates((prev) => {
+              const next = [...prev];
+              const inProgressIdx = next.findIndex(
+                (s) => s.status === "in_progress"
+              );
+              const targetIdx =
+                inProgressIdx >= 0
+                  ? inProgressIdx
+                  : step != null
+                  ? next.findIndex((s) => s.step === step)
+                  : -1;
+              if (targetIdx >= 0) {
+                next[targetIdx] = {
+                  ...next[targetIdx],
+                  status: "failed",
+                  error: message,
+                };
+              }
+              return next;
+            });
+            addLine({
+              timestamp: ts,
+              step,
+              name,
+              level: "error",
+              message: `✗ ${message}`,
+            });
+            setIsRunning(false);
+            ws?.close();
+          } else {
+            addLine({
+              timestamp: ts,
+              step,
+              name,
+              level: "warning",
+              message: `⚠ ${message}`,
+            });
+          }
+          break;
+        }
+
+        case "completed": {
+          receivedCompleted = true;
+          const total_processed = msg.total_processed as number;
+          const pipeline_type = msg.pipeline_type as string;
+          const duration_sec = msg.duration_sec as number;
+          setCompletedSummary({ total_processed, pipeline_type, duration_sec });
+          setIsRunning(false);
+          setIsComplete(true);
+          addLine({
+            timestamp: ts,
+            step: null,
+            name: null,
+            level: "info",
+            message: `Pipeline complete in ${duration_sec}s`,
+          });
+          fetchResults();
+          break;
+        }
+      }
+    }
+
+    // ── Start WebSocket connection ─────────────────────────────────────────────
+
+    function startWS(inputType: "image" | "video") {
+      // Pre-populate with fallback step names (overwritten once pipeline_init fires)
+      const fallbackNames =
+        inputType === "video" ? VIDEO_STEPS : IMAGE_STEPS;
+      setStepStates(makePendingSteps(fallbackNames));
+
+      const wsBase = API_BASE_URL.replace(/^http:\/\//i, "ws://").replace(
+        /^https:\/\//i,
+        "wss://"
+      );
+      const wsUrl = `${wsBase}/api/v1/jobs/${encodeURIComponent(
+        job_id
+      )}/preprocess/ws`;
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = async () => {
+        if (cancelled) {
+          ws?.close();
+          return;
+        }
+        setIsRunning(true);
+        try {
+          const res = await fetch(
+            `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(
+              job_id
+            )}/preprocess`,
+            { method: "POST" }
+          );
+          if (cancelled) return;
+          if (res.status === 409) {
+            setGlobalError("Job is not ready for preprocessing.");
+            addPipelineLine("Error: job not ready for preprocessing", "error");
+            setIsRunning(false);
+            ws?.close();
+          }
+          // 202 → pipeline streams events via WS
+        } catch (e) {
+          if (cancelled) return;
+          const errMsg =
+            e instanceof Error ? e.message : "Failed to start preprocessing";
+          setGlobalError(errMsg);
+          addPipelineLine(`Error: ${errMsg}`, "error");
+          setIsRunning(false);
+          ws?.close();
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          handleMsg(JSON.parse(event.data) as Record<string, unknown>);
+        } catch { /* malformed JSON — ignore */ }
+      };
+
+      ws.onerror = () => {
+        // onclose fires after onerror — handled there
+      };
+
+      ws.onclose = () => {
+        if (!receivedCompleted && !cancelled) {
+          addPipelineLine(
+            "WebSocket unavailable — switched to polling"
+          );
+          startPolling();
+        }
+      };
+    }
+
+    // ── Load already-complete job ─────────────────────────────────────────────
+
+    function loadCompletedJob(data: JobStatus) {
+      const r = data.preprocessing_result ?? null;
+      if (r?.pipeline_steps?.length) {
+        setStepStates(
+          r.pipeline_steps.map(
+            (s): StepState => ({
+              step: s.step,
+              name: s.name,
+              status: s.status === "completed" ? "completed" : "failed",
+              duration_sec: s.duration_sec,
+              detail: s.detail,
+              progress: null,
+              error: null,
+            })
+          )
+        );
+        const totalDuration = r.pipeline_steps.reduce(
+          (acc, s) => acc + s.duration_sec,
+          0
+        );
+        setCompletedSummary({
+          total_processed: r.total_processed,
+          pipeline_type: r.pipeline_type,
+          duration_sec: totalDuration,
+        });
+        setResult(r);
+        try {
+          localStorage.setItem(
+            `preprocess_result_${job_id}`,
+            JSON.stringify(r)
+          );
+        } catch { /* quota */ }
+      } else {
+        // Fallback: show step names without timing data
+        const fallbackNames =
+          data.input_type === "video" ? VIDEO_STEPS : IMAGE_STEPS;
+        setStepStates(
+          makePendingSteps(fallbackNames).map((s) => ({
+            ...s,
+            status: "completed" as StepStatus,
+          }))
+        );
+        // Try localStorage cache
+        try {
+          const cached = localStorage.getItem(`preprocess_result_${job_id}`);
+          if (cached) {
+            const cached_r = JSON.parse(cached) as PreprocessResult;
+            setResult(cached_r);
+            const totalDuration =
+              cached_r.pipeline_steps?.reduce(
+                (acc, s) => acc + s.duration_sec,
+                0
+              ) ?? 0;
+            setCompletedSummary({
+              total_processed: cached_r.total_processed,
+              pipeline_type: cached_r.pipeline_type,
+              duration_sec: totalDuration,
+            });
+          }
+        } catch { /* corrupt cache */ }
+      }
+      setIsComplete(true);
+    }
+
+    // ── Fetch job metadata and branch ─────────────────────────────────────────
+
+    async function fetchJob() {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`
+        );
+        if (cancelled) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: JobStatus = await res.json();
+        if (cancelled) return;
 
         setJobMeta(data);
-        setSteps(pipelineSteps);
-        setStepStates(pipelineSteps.map(() => alreadyDone ? "completed" : "pending"));
-        if (alreadyDone) {
-          setIsComplete(true);
-          // Prefer preprocessing_result from job status; fall back to localStorage cache
-          const serverResult = data.preprocessing_result ?? null;
-          const applyResult = (r: PreprocessResult) => {
-            setResult(r);
-            if (r.pipeline_steps?.length) {
-              setStepDetails(r.pipeline_steps);
-              setStepStates(r.pipeline_steps.map(s =>
-                s.status === "completed" ? "completed" : "failed"
-              ));
-            } else {
-              setStepStates(pipelineSteps.map(() => "completed"));
-            }
-          };
-          if (serverResult) {
-            applyResult(serverResult);
-            try { localStorage.setItem(`preprocess_result_${job_id}`, JSON.stringify(serverResult)); } catch { }
-          } else {
-            try {
-              const cached = localStorage.getItem(`preprocess_result_${job_id}`);
-              if (cached) applyResult(JSON.parse(cached));
-            } catch { /* ignore stale/corrupt cache */ }
-          }
+
+        if (ALREADY_PREPROCESSED.has(data.status)) {
+          loadCompletedJob(data);
+        } else {
+          startWS(data.input_type);
         }
       } catch (e) {
-        setMetaError(e instanceof Error ? e.message : "Failed to load job");
+        if (cancelled) return;
+        setMetaError(
+          e instanceof Error ? e.message : "Failed to load job"
+        );
       }
     }
+
     fetchJob();
-  }, [job_id]);
 
-  // ── Auto-start once job metadata is loaded (only for validated jobs) ─────
-  useEffect(() => {
-    if (jobMeta && !hasStarted.current && !ALREADY_PREPROCESSED.has(jobMeta.status)) {
-      runPreprocessing(jobMeta.input_type);
-    }
-  }, [jobMeta]);
+    return () => {
+      cancelled = true;
+      ws?.close();
+      if (pollInterval) clearInterval(pollInterval);
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [job_id, retryCount]); // retryCount forces re-run on manual retry
 
-  function stopPolling() {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
-  }
+  // ── Derived: before/after image list ─────────────────────────────────────────
 
-  async function runPreprocessing(inputType?: "image" | "video") {
-    if (hasStarted.current) return;
-    hasStarted.current = true;
-
-    const pipelineSteps = (inputType ?? jobMeta?.input_type) === "video" ? VIDEO_STEPS : IMAGE_STEPS;
-    setSteps(pipelineSteps);
-    // Phase 1: step 1 active (spinner), all others pending
-    setStepStates(["active", ...pipelineSteps.slice(1).map((): StepState => "pending")]);
-    setIsRunning(true);
-    setError(null);
-    setIsComplete(false);
-    setStepDetails([]);
-    setVisibleLogs([]);
-    setStepProgress(0);
-    lastActiveIdxRef.current = -1;
-
-    // Fire POST — 202 Accepted, pipeline starts in background
-    try {
-      await preprocessJob(job_id);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to start preprocessing";
-      setStepStates(prev => { const n = [...prev]; n[0] = "failed"; return n; });
-      setError(msg);
-      setIsRunning(false);
-      return;
-    }
-
-    // ── Phase 2/3 handler called on each successful poll ──────────────────────
-    async function poll() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`);
-        if (!res.ok) return; // transient — try again next tick
-        const data: JobStatus = await res.json();
-        setJobMeta(data);
-
-        if (data.status === "preprocessed") {
-          // ── Phase 2: pipeline finished ──────────────────────────────────────
-          stopPolling();
-          const r: PreprocessResult | null = data.preprocessing_result ?? null;
-
-          if (r) {
-            if (r.pipeline_steps?.length) {
-              setStepDetails(r.pipeline_steps);
-              setStepStates(r.pipeline_steps.map(s => s.status === "completed" ? "completed" : "failed"));
-            } else {
-              setStepStates(pipelineSteps.map((): StepState => "completed"));
-            }
-            setResult(r);
-
-            // Append summary to terminal
-            const resultLogs: LogLine[] = [
-              { tag: "─────",  tagColor: "text-gray-700",    message: "" },
-              { tag: "[DONE]", tagColor: "text-emerald-400", message: `Pipeline finished. ${r.total_processed} file${r.total_processed !== 1 ? "s" : ""} processed.` },
-            ];
-            if (r.pipeline_steps?.length) {
-              const totalSec = r.pipeline_steps.reduce((s, p) => s + p.duration_sec, 0);
-              resultLogs.push({ tag: "[TIME]",  tagColor: "text-blue-400",   message: `Total execution time: ${totalSec.toFixed(2)}s` });
-            }
-            if (r.cluster_info?.length) {
-              resultLogs.push({ tag: "[CLUST]", tagColor: "text-purple-400", message: `${r.cluster_info.length} cluster${r.cluster_info.length !== 1 ? "s" : ""} created.` });
-            }
-            setVisibleLogs(prev => [...prev, ...resultLogs]);
-            try { localStorage.setItem(CACHE_KEY, JSON.stringify(r)); } catch { /* quota */ }
-          } else {
-            // No preprocessing_result in response — mark all complete, fall back to cache
-            setStepStates(pipelineSteps.map((): StepState => "completed"));
-            try {
-              const cached = localStorage.getItem(CACHE_KEY);
-              if (cached) setResult(JSON.parse(cached));
-            } catch { /* ignore */ }
-          }
-
-          setIsComplete(true);
-          setIsRunning(false);
-
-        } else if (data.status === "failed") {
-          // ── Phase 3: server-side failure ────────────────────────────────────
-          stopPolling();
-          setStepStates(prev => {
-            const next = [...prev];
-            const activeIdx = next.findIndex(s => s === "active");
-            if (activeIdx >= 0) next[activeIdx] = "failed";
-            return next;
-          });
-          setError("Preprocessing failed on the server.");
-          setIsRunning(false);
-        }
-        // status === "preprocessing" → stay in Phase 1, do nothing
-      } catch {
-        // Network error — keep polling
-      }
-    }
-
-    // Poll immediately then every 5 s
-    poll();
-    pollRef.current = setInterval(poll, 5000);
-
-    // 30-minute hard timeout
-    pollTimeoutRef.current = setTimeout(() => {
-      stopPolling();
-      setStepStates(prev => {
-        const next = [...prev];
-        const activeIdx = next.findIndex(s => s === "active");
-        if (activeIdx >= 0) next[activeIdx] = "failed";
-        return next;
-      });
-      setError("Preprocessing timed out after 30 minutes.");
-      setIsRunning(false);
-    }, 30 * 60 * 1000);
-  }
-
-  // Build before/after image entries, joining CII scores from the preprocess result.
   const ciiByFileId = new Map(
-    (result?.cii_scores ?? []).map(e => [e.file_id, e])
+    (result?.cii_scores ?? []).map((e) => [e.file_id, e])
   );
-  const imageFiles = jobMeta?.files
-    .filter(f => f.status !== "invalid")
-    .map(f => {
-      const ext = f.filename.split(".").pop() ?? "jpg";
-      const storedName = `${f.file_id}.${ext}`;
-      const cii = ciiByFileId.get(f.file_id) ?? null;
-      return {
-        label: f.filename,
-        original: `${API_BASE_URL}/static/${encodeURIComponent(job_id)}/original/${storedName}`,
-        processed: `${API_BASE_URL}/static/${encodeURIComponent(job_id)}/processed/${storedName}`,
-        ciiScore: cii?.cii_score ?? null,
-        originalContrast: cii?.original_contrast ?? null,
-        processedContrast: cii?.processed_contrast ?? null,
-      };
-    }) ?? [];
+  const imageFiles =
+    jobMeta?.files
+      .filter((f) => f.status !== "invalid")
+      .map((f) => {
+        const ext = f.filename.split(".").pop() ?? "jpg";
+        const storedName = `${f.file_id}.${ext}`;
+        const cii = ciiByFileId.get(f.file_id) ?? null;
+        return {
+          label: f.filename,
+          original: `${API_BASE_URL}/static/${encodeURIComponent(
+            job_id
+          )}/original/${storedName}`,
+          processed: `${API_BASE_URL}/static/${encodeURIComponent(
+            job_id
+          )}/processed/${storedName}`,
+          ciiScore: cii?.cii_score ?? null,
+          originalContrast: cii?.original_contrast ?? null,
+          processedContrast: cii?.processed_contrast ?? null,
+        };
+      }) ?? [];
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Header */}
       <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
           <button
             onClick={() => router.back()}
-            className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition"
+            className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition cursor-pointer"
             aria-label="Go back"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-base font-bold text-gray-900 dark:text-white">Preprocessing Pipeline</h1>
+            <h1 className="text-base font-bold text-gray-900 dark:text-white">
+              Preprocessing Pipeline
+            </h1>
             <p className="text-xs text-gray-400 font-mono">Job: {job_id}</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -987,139 +1326,127 @@ export default function PreprocessPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-
-        {/* Meta error */}
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+        {/* Meta fetch error */}
         {metaError && (
           <div className="flex items-center gap-2 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-sm text-amber-700 dark:text-amber-300">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            Could not load job info: {metaError}. Attempting preprocessing anyway…
+            Could not load job info: {metaError}
           </div>
         )}
 
-        {/* ── Section 1: Stepper + Execution Dashboard ──────────────── */}
+        {/* ── Section 1: Pipeline progress + stepper ──────────────────── */}
         <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Pipeline Progress
             </h2>
             {result && (
-              <span className="text-xs text-gray-400">
-                {result.total_processed} file{result.total_processed !== 1 ? "s" : ""} processed
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {result.total_processed} file
+                {result.total_processed !== 1 ? "s" : ""} processed
               </span>
             )}
           </div>
 
-          {/* Stepper */}
-          <div className="flex items-start gap-0 overflow-x-auto pb-2">
-            {steps.map((label, i) => {
-              const real = stepDetails.find(s => s.step === i + 1);
-              return (
-                <StepNode
-                  key={i}
-                  label={real?.name ?? label}
-                  index={i}
-                  state={stepStates[i]}
-                  detail={real?.detail}
-                  duration={real?.duration_sec}
-                  isLast={i === steps.length - 1}
-                  prevCompleted={i > 0 && stepStates[i - 1] === "completed"}
-                />
-              );
-            })}
-          </div>
+          <PreprocessingStepper
+            steps={stepStates}
+            completedSummary={completedSummary}
+            elapsedSecs={elapsedSecs}
+            isRunning={isRunning}
+          />
 
-          {/* Phase 1 — video container placeholder with spinner */}
-          {isRunning && jobMeta?.input_type === "video" && (
-            <div className="mt-6 w-full">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <Video className="w-4 h-4" />
-                Preprocessed Video Output
-              </h2>
-              <div className="w-full bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-                {/* Spinner area */}
-                <div className="w-full bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center gap-3 py-16">
-                  <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Processing video…</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">The processed output will appear here once the pipeline completes.</p>
-                </div>
-                {/* Note strip */}
-                <div className="border-t border-gray-100 dark:border-gray-800 px-5 py-3 flex items-center gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" />
-                  <p className="text-xs text-amber-600 dark:text-amber-400">This may take several minutes for large videos.</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Execution dashboard — visible while running */}
-          {isRunning && (
-            <ExecutionDashboard
-              steps={steps}
-              stepStates={stepStates}
-              elapsedSecs={elapsedSecs}
-              stepProgress={stepProgress}
-              visibleLogs={visibleLogs}
-              logEndRef={logEndRef}
-            />
-          )}
-
-          {error && (
-            <div className="mt-4 flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">
+          {/* Fatal error with retry */}
+          {globalError && (
+            <div className="mt-5 flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              {error}
+              <span className="flex-1">{globalError}</span>
               <button
-                onClick={() => {
-                  hasStarted.current = false;
-                  runPreprocessing(jobMeta?.input_type);
-                }}
-                className="ml-auto text-xs underline hover:no-underline"
+                onClick={handleRetry}
+                className="text-xs underline hover:no-underline shrink-0 cursor-pointer"
               >
                 Retry
               </button>
             </div>
           )}
+
+          {/* Video processing placeholder while running */}
+          {isRunning && jobMeta?.input_type === "video" && (
+            <div className="mt-6">
+              <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Video className="w-4 h-4" />
+                Preprocessed Video Output
+              </h2>
+              <div className="w-full bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <div className="w-full bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center gap-3 py-14">
+                  <Loader2 className="w-9 h-9 text-emerald-500 animate-spin" />
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                    Processing video…
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    The processed output will appear here once the pipeline completes.
+                  </p>
+                </div>
+                <div className="border-t border-gray-100 dark:border-gray-800 px-5 py-3 flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    This may take several minutes for large videos.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* ── Section 2: Cluster Info + Before/After ─────────────── */}
+        {/* ── Section 2: Terminal log ──────────────────────────────────── */}
+        <PreprocessingTerminal lines={terminalLines} />
+
+        {/* ── Section 3: Results (shown after completion) ─────────────── */}
         {isComplete && (
           <>
-            {/* Cluster Cards + Step Timing — collapsible, survives refresh via localStorage */}
-            {result && result.cluster_info?.length > 0 && (
+            {/* Cluster summary + step timing */}
+            {result && (result.cluster_info?.length > 0 || result.pipeline_steps?.length > 0) && (
               <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-                {/* Toggle header */}
                 <button
-                  onClick={() => setClusterOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
+                  onClick={() => setClusterOpen((o) => !o)}
+                  className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
-                    <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Cluster Summary
                     </h2>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-                      {result.cluster_info.length} cluster{result.cluster_info.length !== 1 ? "s" : ""}
-                    </span>
+                    {result.cluster_info?.length > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                        {result.cluster_info.length} cluster
+                        {result.cluster_info.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
                     {result.pipeline_steps?.length > 0 && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400">
-                        {result.pipeline_steps.reduce((s, p) => s + p.duration_sec, 0).toFixed(2)}s total
+                        {result.pipeline_steps
+                          .reduce((s, p) => s + p.duration_sec, 0)
+                          .toFixed(2)}
+                        s total
                       </span>
                     )}
                   </div>
-                  {clusterOpen
-                    ? <ChevronUp className="w-4 h-4 text-gray-400" />
-                    : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                  {clusterOpen ? (
+                    <ChevronUp className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  )}
                 </button>
 
-                {/* Collapsible body */}
                 {clusterOpen && (
                   <div className="px-6 pb-6 space-y-4 border-t border-gray-100 dark:border-gray-800 pt-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {result.cluster_info.map(c => (
-                        <ClusterCard key={c.cluster_id} info={c} />
-                      ))}
-                    </div>
+                    {result.cluster_info?.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {result.cluster_info.map((c) => (
+                          <ClusterCard key={c.cluster_id} info={c} />
+                        ))}
+                      </div>
+                    )}
 
-                    {/* Per-step timing table */}
                     {result.pipeline_steps?.length > 0 && (
                       <div>
                         <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">
@@ -1131,15 +1458,22 @@ export default function PreprocessPage() {
                               key={s.step}
                               className={cn(
                                 "flex items-center gap-3 px-4 py-2.5 text-xs",
-                                i % 2 === 0 ? "bg-gray-50 dark:bg-gray-900/50" : "bg-white dark:bg-gray-950"
+                                i % 2 === 0
+                                  ? "bg-gray-50 dark:bg-gray-900/50"
+                                  : "bg-white dark:bg-gray-950"
                               )}
                             >
-                              {s.status === "completed"
-                                ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                : <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
-                              <span className="flex-1 text-gray-700 dark:text-gray-300 font-medium">{s.name}</span>
-                              <span className="flex items-center gap-1 text-gray-400 shrink-0">
-                                <Clock className="w-3 h-3" />{s.duration_sec.toFixed(2)}s
+                              {s.status === "completed" ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              ) : (
+                                <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                              )}
+                              <span className="flex-1 text-gray-700 dark:text-gray-300 font-medium">
+                                {s.name}
+                              </span>
+                              <span className="flex items-center gap-1 text-gray-400 shrink-0 font-mono tabular-nums">
+                                <Clock className="w-3 h-3" />
+                                {s.duration_sec.toFixed(2)}s
                               </span>
                             </div>
                           ))}
@@ -1151,45 +1485,55 @@ export default function PreprocessPage() {
               </div>
             )}
 
-            {/* Video pipeline — preprocessed video player */}
-            {jobMeta?.input_type === "video" && (() => {
-              const videoFile = jobMeta.files[0];
-              const ext = videoFile?.filename.split(".").pop() ?? "mp4";
-              // Use processed_path from job status if available; otherwise fall back
-              // to the standard static path pattern used by the backend
-              const videoSrc = videoFile?.processed_path
-                ? `${API_BASE_URL}/static/${videoFile.processed_path}`
-                : `${API_BASE_URL}/static/${encodeURIComponent(job_id)}/processed/${videoFile?.file_id}.${ext}`;
-              return (
-                <VideoPlayer
-                  src={videoSrc}
-                  totalFrames={result?.total_processed ?? 0}
-                  steps={result?.pipeline_steps ?? []}
-                />
-              );
-            })()}
+            {/* Video output */}
+            {jobMeta?.input_type === "video" &&
+              (() => {
+                const videoFile = jobMeta.files[0];
+                const ext = videoFile?.filename.split(".").pop() ?? "mp4";
+                const videoSrc = videoFile?.processed_path
+                  ? `${API_BASE_URL}/static/${videoFile.processed_path}`
+                  : `${API_BASE_URL}/static/${encodeURIComponent(
+                      job_id
+                    )}/processed/${videoFile?.file_id}.${ext}`;
+                return (
+                  <VideoPlayer
+                    src={videoSrc}
+                    totalFrames={result?.total_processed ?? 0}
+                    steps={result?.pipeline_steps ?? []}
+                  />
+                );
+              })()}
 
-            {/* Image pipeline — Before / After Comparisons */}
+            {/* Before / After image comparisons */}
             {jobMeta?.input_type !== "video" && imageFiles.length > 0 && (
               <div>
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+                <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
                   Before / After Comparison
                   <span className="ml-2 text-gray-400 font-normal normal-case text-xs">
-                    Toggle between original and processed images to see the effect of preprocessing
+                    Toggle to compare original vs processed
                   </span>
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {imageFiles.map(({ label, original, processed, ciiScore, originalContrast, processedContrast }) => (
-                    <BeforeAfterToggle
-                      key={label}
-                      label={label}
-                      original={original}
-                      processed={processed}
-                      ciiScore={ciiScore}
-                      originalContrast={originalContrast}
-                      processedContrast={processedContrast}
-                    />
-                  ))}
+                  {imageFiles.map(
+                    ({
+                      label,
+                      original,
+                      processed,
+                      ciiScore,
+                      originalContrast,
+                      processedContrast,
+                    }) => (
+                      <BeforeAfterToggle
+                        key={label}
+                        label={label}
+                        original={original}
+                        processed={processed}
+                        ciiScore={ciiScore}
+                        originalContrast={originalContrast}
+                        processedContrast={processedContrast}
+                      />
+                    )
+                  )}
                 </div>
               </div>
             )}
@@ -1198,8 +1542,10 @@ export default function PreprocessPage() {
             <div className="flex justify-end">
               <button
                 id="btn-proceed-detection"
-                onClick={() => router.push(`/results/${encodeURIComponent(job_id)}`)}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition shadow-lg shadow-emerald-600/20"
+                onClick={() =>
+                  router.push(`/results/${encodeURIComponent(job_id)}`)
+                }
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition shadow-lg shadow-emerald-600/20 cursor-pointer"
               >
                 Proceed to Detection
                 <ArrowRight className="w-5 h-5" />
