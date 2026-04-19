@@ -121,14 +121,14 @@ const ALREADY_PREPROCESSED = new Set([
 const IMAGE_STEPS = [
   "Feature Extraction",
   "Clustering",
-  "IMOCS Optimization",
+  "MOCS Optimization",
   "CLAHE Enhancement",
   "Bilateral Filter",
 ];
 const VIDEO_STEPS = [
   "Frame Sampling",
   "Median Frame Construction",
-  "IMOCS Optimization",
+  "MOCS Optimization",
   "Frame Processing",
   "Save Output",
 ];
@@ -273,14 +273,14 @@ function ClusterCard({ info }: { info: ClusterInfo }) {
         <span
           className={cn(
             "px-2 py-0.5 rounded-full text-[11px] font-semibold",
-            info.clahe_params.source === "imocs" ||
-              info.clahe_params.source === "imocs_video_median"
+            info.clahe_params.source === "mocs" ||
+              info.clahe_params.source === "mocs_video_median"
               ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
               : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
           )}
         >
-          {info.clahe_params.source === "imocs_video_median"
-            ? "IMOCS Video"
+          {info.clahe_params.source === "mocs_video_median"
+            ? "MOCS Video"
             : info.clahe_params.source.toUpperCase()}
         </span>
       </div>
