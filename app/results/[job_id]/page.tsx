@@ -31,6 +31,7 @@ import {
   Film,
   FileText,
   FileImage,
+  MapPin,
 } from "lucide-react";
 import SettingsIcon from '@mui/icons-material/Settings';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
@@ -780,6 +781,7 @@ export default function ResultPage() {
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Severity</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Crack Width</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Area</th>
+                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -790,6 +792,39 @@ export default function ResultPage() {
                               <td className="px-4 py-3">{severityBadge(d.severity)}</td>
                               <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{d.crack_width_mm != null ? `${d.crack_width_mm.toFixed(1)} mm` : "—"}</td>
                               <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{d.area_px != null ? `${d.area_px.toLocaleString()} px²` : "—"}</td>
+                              <td className="px-4 py-3">
+                                {d.location?.type === 'geo' && d.location.latitude != null && d.location.longitude != null ? (
+                                  <div className="flex items-start gap-1.5">
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 shrink-0">
+                                      <MapPin className="w-2.5 h-2.5" />GPS
+                                    </span>
+                                    <div className="min-w-0">
+                                      <a
+                                        href={`https://www.google.com/maps?q=${d.location.latitude},${d.location.longitude}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline leading-tight block"
+                                      >
+                                        {d.location.latitude.toFixed(5)}, {d.location.longitude.toFixed(5)}
+                                      </a>
+                                      {d.location.altitude_m != null && (
+                                        <span className="text-xs text-gray-400 dark:text-gray-500">{d.location.altitude_m.toFixed(1)} m</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : d.location?.type === 'pixel' && d.location.pixel_x != null && d.location.pixel_y != null ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 shrink-0">
+                                      Pixel
+                                    </span>
+                                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                                      ({d.location.pixel_x}, {d.location.pixel_y})
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-300 dark:text-gray-600">—</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
