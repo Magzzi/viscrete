@@ -72,6 +72,15 @@ export interface PreprocessResponse {
   filenames: string[];
 }
 
+export interface DetectionLocation {
+  type: 'geo' | 'pixel';
+  latitude?: number | null;
+  longitude?: number | null;
+  altitude_m?: number | null;
+  pixel_x?: number | null;
+  pixel_y?: number | null;
+}
+
 export interface Detection {
   id: string;
   class_id: number;
@@ -81,6 +90,7 @@ export interface Detection {
   crack_width_mm?: number | null;
   area_px?: number | null;
   bounding_box: { x1: number; y1: number; x2: number; y2: number };
+  location?: DetectionLocation | null;
 }
 
 export interface DetectionResult {

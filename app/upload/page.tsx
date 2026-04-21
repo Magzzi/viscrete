@@ -39,6 +39,8 @@ import {
   Layers,
   CheckSquare,
   Square,
+  FileText,
+  Plus,
 } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 
@@ -101,6 +103,8 @@ export default function UploadPage() {
 
   // ── File state
   const [files, setFiles] = useState<File[]>([]);
+  // srtMap: video filename → paired SRT File (video mode only)
+  const [srtMap, setSrtMap] = useState<Record<string, File>>({});
   const [isDragging, setIsDragging] = useState(false);
 
   // ── Upload / validation state
@@ -146,6 +150,7 @@ export default function UploadPage() {
   // Reset files when media type changes
   useEffect(() => {
     setFiles([]);
+    setSrtMap({});
     setValidationResults(null);
     setCanProceed(false);
     setUploadError(null);
@@ -268,9 +273,23 @@ export default function UploadPage() {
   }
 
   function removeFile(idx: number) {
+    const removed = files[idx];
     setFiles(prev => prev.filter((_, i) => i !== idx));
+    if (removed) setSrtMap(prev => { const n = { ...prev }; delete n[removed.name]; return n; });
     setValidationResults(null);
     setCanProceed(false);
+  }
+
+  function attachSrt(videoName: string, srtFile: File) {
+    if (!srtFile.name.toLowerCase().endsWith(".srt")) {
+      showToast("Only .srt files are accepted.", "warn");
+      return;
+    }
+    setSrtMap(prev => ({ ...prev, [videoName]: srtFile }));
+  }
+
+  function removeSrt(videoName: string) {
+    setSrtMap(prev => { const n = { ...prev }; delete n[videoName]; return n; });
   }
 
   const canUpload =
@@ -286,7 +305,8 @@ export default function UploadPage() {
     try {
       const job = await createJob(mediaType, siteName.trim(), inspectorName.trim());
       setJobId(job.job_id);
-      const results = await validateFiles(job.job_id, files);
+      const srtFiles = Object.values(srtMap);
+      const results = await validateFiles(job.job_id, [...files, ...srtFiles]);
       setValidationResults(results);
       const hasValid = results.some(r => r.is_valid);
       setCanProceed(hasValid);
@@ -611,17 +631,51 @@ export default function UploadPage() {
                   </div>
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {files.map((f, i) => (
-                      <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm">
-                        {mediaType === "image" ? <FileImage className="w-4 h-4 text-blue-400 shrink-0" /> : <FileVideo className="w-4 h-4 text-purple-400 shrink-0" />}
-                        <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{f.name}</span>
-                        <span className="text-gray-400 text-xs shrink-0">{formatBytes(f.size)}</span>
-                        <button
-                          onClick={e => { e.stopPropagation(); removeFile(i); }}
-                          className="text-gray-400 hover:text-red-500 transition shrink-0"
-                          aria-label="Remove file"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      <div key={i} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-hidden">
+                        <div className="flex items-center gap-3 px-3 py-2 text-sm">
+                          {mediaType === "image" ? <FileImage className="w-4 h-4 text-blue-400 shrink-0" /> : <FileVideo className="w-4 h-4 text-purple-400 shrink-0" />}
+                          <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{f.name}</span>
+                          <span className="text-gray-400 text-xs shrink-0">{formatBytes(f.size)}</span>
+                          <button
+                            onClick={e => { e.stopPropagation(); removeFile(i); }}
+                            className="text-gray-400 hover:text-red-500 transition shrink-0"
+                            aria-label="Remove file"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {mediaType === "video" && (
+                          <div className="px-3 pb-2">
+                            {srtMap[f.name] ? (
+                              <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 text-xs">
+                                <FileText className="w-3 h-3 text-purple-500 shrink-0" />
+                                <span className="flex-1 truncate text-purple-700 dark:text-purple-300">{srtMap[f.name].name}</span>
+                                <button
+                                  onClick={e => { e.stopPropagation(); removeSrt(f.name); }}
+                                  className="text-purple-400 hover:text-red-500 transition shrink-0"
+                                  aria-label="Remove SRT"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-pointer hover:text-purple-500 dark:hover:text-purple-400 transition">
+                                <input
+                                  type="file"
+                                  accept=".srt"
+                                  className="hidden"
+                                  onChange={e => {
+                                    const srt = e.target.files?.[0];
+                                    if (srt) attachSrt(f.name, srt);
+                                    e.target.value = "";
+                                  }}
+                                />
+                                <Plus className="w-3 h-3" />
+                                Attach SRT telemetry (optional)
+                              </label>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
