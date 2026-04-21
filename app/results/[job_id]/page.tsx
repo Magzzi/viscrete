@@ -118,13 +118,14 @@ export default function ResultPage() {
   const flatData = detectData as any;
   const flatDetections: Detection[] = flatData?.detections ?? [];
 
-  // Derived counts — use flat detections since total_defect_counts may not exist
-  const totalDefectCount: number = flatData?.total_defects ?? flatData?.total_defect_count ?? 0;
-  const cracksCount   = flatDetections.filter(d => d.defect_type === 'cracks').length;
-  const spallingCount = flatDetections.filter(d => d.defect_type === 'spalling').length;
-  const peelingCount  = flatDetections.filter(d => d.defect_type === 'peeling').length;
-  const algaeCount    = flatDetections.filter(d => d.defect_type === 'algae').length;
-  const stainCount    = flatDetections.filter(d => d.defect_type === 'staining').length;
+  // Derived counts from total_defect_counts (API-provided, keyed by defect type)
+  const defectCounts = flatData?.total_defect_counts ?? {};
+  const cracksCount   = defectCounts.cracks   ?? 0;
+  const spallingCount = defectCounts.spalling  ?? 0;
+  const peelingCount  = defectCounts.peeling   ?? 0;
+  const algaeCount    = defectCounts.algae     ?? 0;
+  const stainCount    = defectCounts.stain     ?? 0;
+  const totalDefectCount: number = flatData?.total_defects ?? (cracksCount + spallingCount + peelingCount + algaeCount + stainCount);
 
   // View mode — images (carousel) vs video player
   const [viewMode, setViewMode] = useState<"images" | "video">("images");
@@ -156,6 +157,10 @@ export default function ResultPage() {
   const [projectName, setProjectName] = useState("—");
   const [modelName] = useState("YOLOv11-STRUCTURAL.pt");
   const [projectDate, setProjectDate] = useState("—");
+  const [siteLocation, setSiteLocation] = useState<string | null>(null);
+
+  type FileGpsEntry = { filename: string; gps_latitude: number | null; gps_longitude: number | null; location_label: string | null };
+  const [fileGpsMap, setFileGpsMap] = useState<Record<string, FileGpsEntry>>({});
 
   // ── Init: check job status, then run detection ──────────────────────────────
 
@@ -165,12 +170,29 @@ export default function ResultPage() {
         const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}`);
         if (res.ok) {
           const job = await res.json();
-          if (job.site_name) setProjectName(job.site_name);
+          console.log('[GET /jobs/:id]', job);
+          if (job.site_location) {
+            setProjectName(job.site_location);
+            setSiteLocation(job.site_location);
+          }
           if (job.created_at) {
             setProjectDate(new Date(job.created_at).toLocaleString("en-PH", {
               month: "long", day: "numeric", year: "numeric",
               hour: "numeric", minute: "2-digit",
             }));
+          }
+          // Build file GPS map for location fallback resolution
+          if (Array.isArray(job.files)) {
+            const map: Record<string, FileGpsEntry> = {};
+            for (const f of job.files as Array<{ file_id: string; filename?: string; gps_latitude?: number; gps_longitude?: number; location_label?: string }>) {
+              map[f.file_id] = {
+                filename: f.filename ?? f.file_id,
+                gps_latitude: f.gps_latitude ?? null,
+                gps_longitude: f.gps_longitude ?? null,
+                location_label: f.location_label ?? null,
+              };
+            }
+            setFileGpsMap(map);
           }
           // Detect video job from uploaded filenames
           if (Array.isArray(job.files) && job.files.some((f: { filename: string }) => isVideoPath(f.filename))) {
@@ -212,6 +234,7 @@ export default function ResultPage() {
     try {
       const { getDetectResults } = await import("@/lib/api");
       const data = await getDetectResults(jobId);
+      console.log('[Detection result (cached)]', data);
       setDetectData(data);
       setHasRun(true);
     } catch (e: unknown) {
@@ -266,6 +289,7 @@ export default function ResultPage() {
     setError(null);
     try {
       const data = await detectJob(jobId);
+      console.log('[Detection result (fresh)]', data);
       setDetectData(data);
       setHasRun(true);
     } catch (e: unknown) {
@@ -398,10 +422,62 @@ export default function ResultPage() {
   // ── All detections (flat) for the defect table ──────────────────────────────
   const allDetections: Detection[] = flatDetections;
 
+  // ── Debug: log location data per defect ─────────────────────────────────────
+  useEffect(() => {
+    if (allDetections.length === 0) return;
+    allDetections.forEach((d, i) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const det = d as any;
+      const loc = det.location;
+      const isSingleFile = Object.keys(fileGpsMap).length <= 1;
+      const fileId = det.file_id ?? (isSingleFile ? flatData?.file_id : undefined);
+      const file = fileId ? fileGpsMap[fileId] : undefined;
+      let coords: string;
+      if (loc?.type === 'geo' && loc.latitude != null && loc.longitude != null) {
+        coords = `${loc.latitude}, ${loc.longitude} (defect-level)`;
+      } else if (file?.gps_latitude != null && file?.gps_longitude != null) {
+        coords = `${file.gps_latitude}, ${file.gps_longitude} (file-level)`;
+      } else {
+        coords = 'none';
+      }
+      console.log(`[Defect ${i + 1}] type=${d.defect_type} | site=${siteLocation ?? '—'} | coords=${coords}`);
+    });
+  }, [allDetections, siteLocation, fileGpsMap]);
+
   // ── Severity counts ─────────────────────────────────────────────────────────
   const lowCount = allDetections.filter(d => d.severity === "Low").length;
   const midCount = allDetections.filter(d => d.severity === "Medium").length;
   const highCount = allDetections.filter(d => d.severity === "High").length;
+
+  // ── Location resolution — builds composite display segments ────────────────
+  type ResolvedLocation = {
+    siteLabel: string;
+    geo: { lat: number; lng: number } | null;
+    locationLabel: string | null;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function resolveDefectLocation(detection: any): ResolvedLocation | null {
+    if (!siteLocation) return null;
+    const loc = detection.location;
+    const isSingleFile = Object.keys(fileGpsMap).length <= 1;
+    const fileId = detection.file_id ?? (isSingleFile ? flatData?.file_id : undefined);
+    const file = fileId ? fileGpsMap[fileId] : undefined;
+
+    // GPS segment: defect-level geo → file-level GPS → omit
+    let geo: { lat: number; lng: number } | null = null;
+    if (loc?.type === 'geo' && loc.latitude != null && loc.longitude != null) {
+      geo = { lat: loc.latitude, lng: loc.longitude };
+    } else if (file?.gps_latitude != null && file?.gps_longitude != null) {
+      geo = { lat: file.gps_latitude, lng: file.gps_longitude };
+    }
+
+    return {
+      siteLabel: siteLocation,
+      geo,
+      locationLabel: file?.location_label ?? null,
+    };
+  }
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -776,6 +852,7 @@ export default function ResultPage() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-gray-200 dark:border-gray-800">
+                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Image</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Defect Type</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Confidence</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Severity</th>
@@ -787,43 +864,52 @@ export default function ResultPage() {
                         <tbody>
                           {allDetections.map((d, i) => (
                             <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800/50 dark:hover:bg-gray-900/50 transition">
+                              <td className="px-4 py-3">
+                                {(() => {
+                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                  const det = d as any;
+                                  const fileId = det.file_id ?? (Object.keys(fileGpsMap).length <= 1 ? flatData?.file_id : undefined);
+                                  const filename = fileId ? fileGpsMap[fileId]?.filename : undefined;
+                                  return filename
+                                    ? <span className="font-mono text-xs text-gray-600 dark:text-gray-400 truncate max-w-[140px] block" title={filename}>{filename}</span>
+                                    : <span className="text-gray-300 dark:text-gray-600">—</span>;
+                                })()}
+                              </td>
                               <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200 capitalize">{d.defect_type}</td>
                               <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{Math.round(d.confidence * 100)}%</td>
                               <td className="px-4 py-3">{severityBadge(d.severity)}</td>
                               <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{d.crack_width_mm != null ? `${d.crack_width_mm.toFixed(1)} mm` : "—"}</td>
                               <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{d.area_px != null ? `${d.area_px.toLocaleString()} px²` : "—"}</td>
                               <td className="px-4 py-3">
-                                {d.location?.type === 'geo' && d.location.latitude != null && d.location.longitude != null ? (
-                                  <div className="flex items-start gap-1.5">
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 shrink-0">
-                                      <MapPin className="w-2.5 h-2.5" />GPS
-                                    </span>
-                                    <div className="min-w-0">
-                                      <a
-                                        href={`https://www.google.com/maps?q=${d.location.latitude},${d.location.longitude}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline leading-tight block"
-                                      >
-                                        {d.location.latitude.toFixed(5)}, {d.location.longitude.toFixed(5)}
-                                      </a>
-                                      {d.location.altitude_m != null && (
-                                        <span className="text-xs text-gray-400 dark:text-gray-500">{d.location.altitude_m.toFixed(1)} m</span>
+                                {(() => {
+                                  const resolved = resolveDefectLocation(d);
+                                  if (!resolved) return <span className="text-gray-300 dark:text-gray-600">—</span>;
+                                  const { siteLabel, geo, locationLabel } = resolved;
+                                  return (
+                                    <div className="flex items-center gap-1 text-xs min-w-0 flex-wrap">
+                                      <span className="text-gray-700 dark:text-gray-300 shrink-0">{siteLabel}</span>
+                                      {geo && (
+                                        <>
+                                          <span className="text-gray-300 dark:text-gray-600 shrink-0">/</span>
+                                          <a
+                                            href={`https://www.google.com/maps?q=${geo.lat},${geo.lng}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="font-mono text-blue-600 dark:text-blue-400 hover:underline shrink-0"
+                                          >
+                                            {geo.lat.toFixed(5)}, {geo.lng.toFixed(5)}
+                                          </a>
+                                        </>
+                                      )}
+                                      {locationLabel && (
+                                        <>
+                                          <span className="text-gray-300 dark:text-gray-600 shrink-0">/</span>
+                                          <span className="text-gray-600 dark:text-gray-400 truncate" title={locationLabel}>{locationLabel}</span>
+                                        </>
                                       )}
                                     </div>
-                                  </div>
-                                ) : d.location?.type === 'pixel' && d.location.pixel_x != null && d.location.pixel_y != null ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 shrink-0">
-                                      Pixel
-                                    </span>
-                                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
-                                      ({d.location.pixel_x}, {d.location.pixel_y})
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-300 dark:text-gray-600">—</span>
-                                )}
+                                  );
+                                })()}
                               </td>
                             </tr>
                           ))}
