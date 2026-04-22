@@ -14,6 +14,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -32,6 +34,8 @@ import {
   FileText,
   FileImage,
   MapPin,
+  ExternalLink,
+  Table2,
 } from "lucide-react";
 import SettingsIcon from '@mui/icons-material/Settings';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
@@ -111,6 +115,7 @@ export default function ResultPage() {
   const [reportGenerated, setReportGenerated] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [csvGenerated, setCsvGenerated] = useState(false);
 
   // The actual API response is flat (api.ts types are outdated):
   // { job_id, file_id, total_defects, detections[], annotated_paths[] }
@@ -321,7 +326,7 @@ export default function ResultPage() {
   async function handleDownloadPdf() {
     setIsDownloading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/report/pdf`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/report`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -338,7 +343,27 @@ export default function ResultPage() {
   }
 
   function handleViewPdf() {
-    window.open(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/report/pdf`, "_blank");
+    router.push(`/report/${jobId}`);
+  }
+
+  function handleDownloadCsv() {
+    const headers = ['Defect Type', 'Confidence', 'Severity', 'Crack Width (mm)', 'Area (px²)'];
+    const rows = flatDetections.map((d: Detection) => [
+      d.defect_type,
+      `${Math.round(d.confidence * 100)}%`,
+      d.severity ?? '',
+      d.crack_width_mm != null ? d.crack_width_mm.toFixed(1) : '',
+      d.area_px != null ? String(d.area_px) : '',
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inspection-report-${jobId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setCsvGenerated(true);
   }
 
   // ── Image carousel ──────────────────────────────────────────────────────────
@@ -1024,40 +1049,51 @@ export default function ResultPage() {
                       <><Download className="w-4 h-4 mr-2" /> Download PDF Report</>
                     )}
                   </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="w-full cursor-pointer bg-white border-2 border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:bg-black dark:text-yellow-500 dark:hover:bg-[#221f0c] dark:hover:text-yellow-500">
-                        <Grid3x3 className="w-4 h-4 mr-2" />
-                        More Export Options
-                        <ChevronDown className="w-4 h-4 ml-auto" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-700">
-                      <DropdownMenuItem
-                        className="text-gray-800 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-800 cursor-pointer"
-                        onClick={handleViewPdf}
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        <div>
-                          <div className="font-semibold">View PDF</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Open in new tab</div>
-                        </div>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-gray-800 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-800 cursor-pointer"
-                        onClick={handleDownloadPdf}
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        <div>
-                          <div className="font-semibold">Download PDF</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Visual inspection report</div>
-                        </div>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">PDF includes annotated images & findings summary</p>
+                  <Button
+                    variant="outline"
+                    className="cursor-pointer w-full mb-3 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"
+                    onClick={handleViewPdf}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    View PDF Report
+                  </Button>
                 </>
               )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full cursor-pointer bg-white border-2 border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:bg-black dark:text-yellow-500 dark:hover:bg-[#221f0c] dark:hover:text-yellow-500">
+                    <Grid3x3 className="w-4 h-4 mr-2" />
+                    More Export Options
+                    <ChevronDown className="w-4 h-4 ml-auto" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60 bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-700">
+                  <DropdownMenuLabel className="text-xs text-gray-400 dark:text-gray-500">PDF</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className="text-gray-800 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-800 cursor-pointer"
+                    onClick={reportGenerated ? handleDownloadPdf : handleGenerateReport}
+                  >
+                    <FileText className="w-4 h-4 mr-2 shrink-0" />
+                    <div>
+                      <div className="font-semibold">{reportGenerated ? 'Download PDF Report' : 'Generate PDF Report'}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{reportGenerated ? 'Annotated images & summary' : 'Create the inspection PDF'}</div>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-gray-100 dark:bg-gray-800" />
+                  <DropdownMenuLabel className="text-xs text-gray-400 dark:text-gray-500">CSV</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className="text-gray-800 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-800 cursor-pointer"
+                    onClick={handleDownloadCsv}
+                  >
+                    <Table2 className="w-4 h-4 mr-2 shrink-0" />
+                    <div>
+                      <div className="font-semibold">{csvGenerated ? 'Download CSV Report' : 'Generate CSV Report'}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Defect data as spreadsheet</div>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>

@@ -148,6 +148,12 @@ export interface ReportResponse {
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 
+/** GET /api/v1/jobs/{job_id} — get full job record including status */
+export async function getJob(jobId: string): Promise<JobStatusResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}`);
+  return handleResponse<JobStatusResponse>(res);
+}
+
 /** GET /api/v1/jobs/{job_id} — get job status including per-file list */
 export async function getJobFiles(jobId: string): Promise<FileStatusItem[]> {
   const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}`);
@@ -288,13 +294,15 @@ export async function getResultImageUrl(jobId: string, imageName: string): Promi
 
 // ─── Report ───────────────────────────────────────────────────────────────────
 
-/** POST /api/v1/jobs/{job_id}/report — generate inspection report */
-export async function generateReport(jobId: string): Promise<ReportResponse> {
+/** POST /api/v1/jobs/{job_id}/report — generate PDF report (201 = created, 409 = already exists, both are success) */
+export async function generateReport(jobId: string): Promise<void> {
   const res = await fetch(
     `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/report`,
     { method: 'POST' }
   );
-  return handleResponse<ReportResponse>(res);
+  if (res.status === 201 || res.status === 409) return;
+  const errData = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+  throw new Error(errData.detail || `HTTP ${res.status}`);
 }
 
 /** GET /api/v1/jobs/{job_id}/report — fetch existing report */
