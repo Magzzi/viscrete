@@ -36,6 +36,7 @@ import {
   MapPin,
   ExternalLink,
   Table2,
+  RefreshCw,
 } from "lucide-react";
 import SettingsIcon from '@mui/icons-material/Settings';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
@@ -138,9 +139,15 @@ export default function ResultPage() {
   // Image carousel state
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0, naturalWidth: 0, naturalHeight: 0 });
+  const [imageLoading, setImageLoading] = useState(false);
+
+  const [fileIdToCarouselIndex, setFileIdToCarouselIndex] = useState<Record<string, number>>({});
+  const [highlightedDetection, setHighlightedDetection] = useState<Detection | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
 
   // Overlay toggles
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
@@ -186,18 +193,24 @@ export default function ResultPage() {
               hour: "numeric", minute: "2-digit",
             }));
           }
-          // Build file GPS map for location fallback resolution
+          // Build file GPS map and carousel index map
           if (Array.isArray(job.files)) {
-            const map: Record<string, FileGpsEntry> = {};
+            const gpsMap: Record<string, FileGpsEntry> = {};
+            const indexMap: Record<string, number> = {};
+            let carouselIdx = 0;
             for (const f of job.files as Array<{ file_id: string; filename?: string; gps_latitude?: number; gps_longitude?: number; location_label?: string }>) {
-              map[f.file_id] = {
+              gpsMap[f.file_id] = {
                 filename: f.filename ?? f.file_id,
                 gps_latitude: f.gps_latitude ?? null,
                 gps_longitude: f.gps_longitude ?? null,
                 location_label: f.location_label ?? null,
               };
+              if (!isVideoPath(f.filename ?? '')) {
+                indexMap[f.file_id] = carouselIdx++;
+              }
             }
-            setFileGpsMap(map);
+            setFileGpsMap(gpsMap);
+            setFileIdToCarouselIndex(indexMap);
           }
           // Detect video job from uploaded filenames
           if (Array.isArray(job.files) && job.files.some((f: { filename: string }) => isVideoPath(f.filename))) {
@@ -323,6 +336,19 @@ export default function ResultPage() {
     }
   }
 
+  async function handleRegenerateReport() {
+    setReportError(null);
+    setIsGenerating(true);
+    try {
+      await generateReport(jobId, true);
+      setReportGenerated(true);
+    } catch (e: unknown) {
+      setReportError(e instanceof Error ? e.message : "Failed to regenerate report");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
   async function handleDownloadPdf() {
     setIsDownloading(true);
     try {
@@ -379,9 +405,16 @@ export default function ResultPage() {
   const goToPrevious = () => setCurrentImageIndex(prev => (prev === 0 ? totalImages - 1 : prev - 1));
   const goToNext = () => setCurrentImageIndex(prev => (prev === totalImages - 1 ? 0 : prev + 1));
 
+  function highlightDetection(det: Detection) {
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedDetection(det);
+    highlightTimerRef.current = setTimeout(() => setHighlightedDetection(null), 2500);
+  }
+
   const handleImageLoad = () => {
     const image = imageRef.current;
     if (!image) return;
+    setImageLoading(false);
     setImageDimensions({
       width:        image.width,
       height:       image.height,
@@ -390,16 +423,20 @@ export default function ResultPage() {
     });
   };
 
-  // Derive processed image path from annotated path:
-  // e.g. "uuid/annotated/file_annotated.jpg" → "uuid/processed/file.jpg"
   const currentAnnotatedPath = imageAnnotatedPaths[currentImageIndex];
+
+  // Derive preprocessed path from annotated path:
+  // e.g. "jobs/uuid/annotated/file_annotated.jpg" → "jobs/uuid/processed/file.jpg"
   const currentImageSrc = currentAnnotatedPath
-    ? `${API_BASE_URL}/static/${currentAnnotatedPath}`
+    ? `${API_BASE_URL}/static/${currentAnnotatedPath
+        .replace('/annotated/', '/processed/')
+        .replace(/_annotated(\.[^.]+)$/, '$1')}`
     : null;
 
-  // Reset dimensions when the displayed image changes so stale overlays don't show
+  // Reset dimensions and mark loading when the displayed image changes
   useEffect(() => {
     setImageDimensions({ width: 0, height: 0, naturalWidth: 0, naturalHeight: 0 });
+    if (currentImageSrc) setImageLoading(true);
   }, [currentImageSrc]);
 
   // ResizeObserver — fires after every layout change to the img element
@@ -421,10 +458,25 @@ export default function ResultPage() {
     return () => ro.disconnect();
   }, [currentImageSrc]);
 
-  // API is flat — all detections belong to the job, not per-image
-  // Filter by per-class visibility toggle
-  const getCurrentDetections = (): Detection[] =>
-    flatDetections.filter(d => visibleDefects.has(d.defect_type as DefectClass));
+  // Resolve the file_id of whichever image is currently shown in the carousel
+  const currentFileId = imageAnnotatedPaths.length === 1
+    ? flatData?.file_id
+    : Object.entries(fileIdToCarouselIndex).find(([, idx]) => idx === currentImageIndex)?.[0];
+
+  // While a highlight is active, show only that exact detection (reference equality).
+  // Otherwise filter by current image and visible defect classes.
+  const getCurrentDetections = (): Detection[] => {
+    if (highlightedDetection) {
+      return flatDetections.filter(d => d === highlightedDetection);
+    }
+    return flatDetections.filter(d => {
+      if (!visibleDefects.has(d.defect_type as DefectClass)) return false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const detFileId = (d as any).file_id ?? (imageAnnotatedPaths.length === 1 ? flatData?.file_id : undefined);
+      if (currentFileId && detFileId && detFileId !== currentFileId) return false;
+      return true;
+    });
+  };
 
   // ── Compute actual rendered image rect inside the object-contain box ─────────
   // With object-contain, the img CSS box may be larger than the rendered content.
@@ -716,26 +768,33 @@ export default function ResultPage() {
             </div>
 
             {/* Image Carousel / Video Player */}
-            <div className="flex-1 flex flex-col p-8 min-h-0">
+            <div ref={carouselRef} className="flex-1 flex flex-col p-8 min-h-0">
 
               {/* ── Video player ─────────────────────────────────────────────── */}
               {viewMode === "video" && isVideoJob && (
-                <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 flex items-center justify-center" style={{ height: '480px' }}>
-                  {annotatedVideoPath ? (
-                    <video
-                      key={annotatedVideoPath}
-                      src={`${API_BASE_URL}/static/${annotatedVideoPath}`}
-                      controls
-                      className="max-w-full max-h-full rounded"
-                      style={{ maxHeight: '464px' }}
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-3 text-gray-400 dark:text-gray-600">
-                      <Film className="w-12 h-12" />
-                      <p className="text-sm">Annotated video not available</p>
-                    </div>
+                <>
+                  <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-3 flex items-center justify-center" style={{ height: '480px' }}>
+                    {annotatedVideoPath ? (
+                      <video
+                        key={annotatedVideoPath}
+                        src={`${API_BASE_URL}/static/${annotatedVideoPath}`}
+                        controls
+                        className="max-w-full max-h-full rounded"
+                        style={{ maxHeight: '464px' }}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-3 text-gray-400 dark:text-gray-600">
+                        <Film className="w-12 h-12" />
+                        <p className="text-sm">Annotated video not available</p>
+                      </div>
+                    )}
+                  </div>
+                  {annotatedVideoPath && (
+                    <p className="text-center text-xs font-mono text-gray-500 dark:text-gray-400 mb-4 truncate">
+                      {annotatedVideoPath.split('/').pop()}
+                    </p>
                   )}
-                </div>
+                </>
               )}
 
               {/* ── Image carousel ───────────────────────────────────────────── */}
@@ -750,18 +809,24 @@ export default function ResultPage() {
                   </div>
                 ) : (
                   <div className="relative w-full h-full">
+                    {/* Loading spinner */}
+                    {imageLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center z-10">
+                        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                      </div>
+                    )}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       ref={imageRef}
                       key={currentImageSrc}
                       src={currentImageSrc}
                       alt={`Detection Result ${currentImageIndex + 1}`}
-                      className="w-full h-full object-contain"
+                      className={cn("w-full h-full object-contain transition-opacity", imageLoading ? "opacity-0" : "opacity-100")}
                       onLoad={handleImageLoad}
                     />
                     {/* Overlay container — positioned at the actual rendered image rect.
                         No overflow-hidden so labels near the top edge aren't clipped. */}
-                    {hasValidDimensions && (
+                    {hasValidDimensions && !imageLoading && (
                       <div
                         ref={containerRef}
                         className="absolute pointer-events-none"
@@ -789,14 +854,20 @@ export default function ResultPage() {
                           const labelAbove = top > 28;
                           const labelLeft  = Math.min(left, renderedW - 120);
 
+                          const isHighlighted = !imageLoading && detection === highlightedDetection;
+
                           return (
                             <div key={index}>
                               {/* Bounding box */}
                               <div
                                 className={cn(
                                   "absolute pointer-events-none",
-                                  showBoundingBoxes ? `border-2 ${defectBorderColor[defect_type] ?? 'border-white'}` : '',
-                                  showColorOverlay  ? (defectBgColor[defect_type] ?? 'bg-white/20') : '',
+                                  isHighlighted
+                                    ? `border-[3px] animate-pulse ${defectBorderColor[defect_type] ?? 'border-white'} ${defectBgColor[defect_type] ?? 'bg-white/20'}`
+                                    : cn(
+                                        showBoundingBoxes ? `border-2 ${defectBorderColor[defect_type] ?? 'border-white'}` : '',
+                                        showColorOverlay ? (defectBgColor[defect_type] ?? 'bg-white/20') : '',
+                                      ),
                                 )}
                                 style={{ left, top, width, height }}
                               />
@@ -825,6 +896,13 @@ export default function ResultPage() {
                   </div>
                 )}
               </div>
+
+              {/* Filename label */}
+              {imageAnnotatedPaths[currentImageIndex] && (
+                <p className="text-center text-xs font-mono text-gray-500 dark:text-gray-400 mb-3 truncate">
+                  {imageAnnotatedPaths[currentImageIndex].split('/').pop()}
+                </p>
+              )}
 
               {/* Carousel Controls */}
               {totalImages > 0 && (
@@ -887,18 +965,44 @@ export default function ResultPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {allDetections.map((d, i) => (
-                            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800/50 dark:hover:bg-gray-900/50 transition">
+                          {allDetections.map((d, i) => {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const det = d as any;
+                            const isSingleFile = imageAnnotatedPaths.length === 1;
+                            const fileId = det.file_id ?? (isSingleFile ? flatData?.file_id : undefined);
+                            const filename = fileId ? fileGpsMap[fileId]?.filename : undefined;
+                            const carouselIndex = isSingleFile
+                              ? 0
+                              : (fileId !== undefined ? (fileIdToCarouselIndex[fileId] ?? -1) : -1);
+                            const isClickable = carouselIndex !== -1;
+
+                            return (
+                            <tr
+                              key={i}
+                              className={cn(
+                                "border-b border-gray-100 dark:border-gray-800/50 transition",
+                                isClickable
+                                  ? "hover:bg-blue-50 dark:hover:bg-blue-950/20 cursor-pointer"
+                                  : "hover:bg-gray-50 dark:hover:bg-gray-900/50"
+                              )}
+                              onClick={() => {
+                                if (!isClickable) return;
+                                setViewMode("images");
+                                setCurrentImageIndex(carouselIndex);
+                                highlightDetection(d);
+                                carouselRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                              }}
+                            >
                               <td className="px-4 py-3">
-                                {(() => {
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  const det = d as any;
-                                  const fileId = det.file_id ?? (Object.keys(fileGpsMap).length <= 1 ? flatData?.file_id : undefined);
-                                  const filename = fileId ? fileGpsMap[fileId]?.filename : undefined;
-                                  return filename
-                                    ? <span className="font-mono text-xs text-gray-600 dark:text-gray-400 truncate max-w-[140px] block" title={filename}>{filename}</span>
-                                    : <span className="text-gray-300 dark:text-gray-600">—</span>;
-                                })()}
+                                <span
+                                  className={cn(
+                                    "font-mono text-xs truncate max-w-[140px] block",
+                                    isClickable ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"
+                                  )}
+                                  title={filename}
+                                >
+                                  {filename ?? "—"}
+                                </span>
                               </td>
                               <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200 capitalize">{d.defect_type}</td>
                               <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{Math.round(d.confidence * 100)}%</td>
@@ -937,7 +1041,8 @@ export default function ResultPage() {
                                 })()}
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1038,17 +1143,33 @@ export default function ResultPage() {
                 </Button>
               ) : (
                 <>
-                  <Button
-                    className="cursor-pointer w-full bg-[#ffcc00] hover:bg-[#ffdd57] text-black font-semibold mb-3"
-                    onClick={handleDownloadPdf}
-                    disabled={isDownloading}
-                  >
-                    {isDownloading ? (
-                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Downloading…</>
-                    ) : (
-                      <><Download className="w-4 h-4 mr-2" /> Download PDF Report</>
-                    )}
-                  </Button>
+                  <div className="flex gap-2 mb-3">
+                    <Button
+                      className="cursor-pointer flex-1 bg-[#ffcc00] hover:bg-[#ffdd57] text-black font-semibold"
+                      onClick={handleDownloadPdf}
+                      disabled={isDownloading || isGenerating}
+                    >
+                      {isDownloading ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Downloading…</>
+                      ) : (
+                        <><Download className="w-4 h-4 mr-2" /> Download PDF Report</>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="cursor-pointer shrink-0 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900"
+                      onClick={handleRegenerateReport}
+                      disabled={isGenerating || isDownloading}
+                      title="Regenerate PDF Report"
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
                   <Button
                     variant="outline"
                     className="cursor-pointer w-full mb-3 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"

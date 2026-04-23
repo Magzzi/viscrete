@@ -294,12 +294,10 @@ export async function getResultImageUrl(jobId: string, imageName: string): Promi
 
 // ─── Report ───────────────────────────────────────────────────────────────────
 
-/** POST /api/v1/jobs/{job_id}/report — generate PDF report (201 = created, 409 = already exists, both are success) */
-export async function generateReport(jobId: string): Promise<void> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/report`,
-    { method: 'POST' }
-  );
+/** POST /api/v1/jobs/{job_id}/report — generate PDF report. Pass regenerate=true to overwrite an existing one. */
+export async function generateReport(jobId: string, regenerate = false): Promise<void> {
+  const url = `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/report${regenerate ? '?regenerate=true' : ''}`;
+  const res = await fetch(url, { method: 'POST' });
   if (res.status === 201 || res.status === 409) return;
   const errData = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
   throw new Error(errData.detail || `HTTP ${res.status}`);
