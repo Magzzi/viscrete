@@ -489,24 +489,25 @@ export default function UploadPage() {
       )}
 
       {/* Header */}
-      <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111]">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-              <FileImage className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-gray-900 dark:text-white tracking-wide group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">VISCRETE</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Concrete Defect Detection System</p>
-            </div>
+      <header className="fixed top-0 left-0 right-0 z-50
+                         border-b border-emerald-100 dark:border-[#2ca75d]/10
+                         bg-white/80 dark:bg-[#14171e]/80 backdrop-blur-md">
+        <div className="container max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-2 select-none">
+            <span className="text-sm font-bold font-mono tracking-tight
+                             bg-gradient-to-r from-[#2ca75d] to-[#0da6f2]
+                             bg-clip-text text-transparent">
+              viscrete
+            </span>
+            <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500 font-mono">
+              / concrete inspection
+            </span>
           </Link>
-          <div className="ml-auto">
-            <ModeToggle />
-          </div>
+          <ModeToggle />
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-6 py-8 pt-20">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">New Inspection Job</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Fill in job details, upload files, and validate before preprocessing.</p>

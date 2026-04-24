@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle2,
@@ -1337,21 +1338,27 @@ export default function PreprocessPage() {
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Header */}
-      <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
+      <header className="fixed top-0 left-0 right-0 z-50
+                         border-b border-emerald-100 dark:border-[#2ca75d]/10
+                         bg-white/80 dark:bg-[#14171e]/80 backdrop-blur-md">
+        <div className="container max-w-5xl mx-auto px-6 py-3 flex items-center gap-4">
           <button
             onClick={() => router.back()}
-            className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition cursor-pointer"
+            className="text-gray-500 hover:text-[#2ca75d] dark:hover:text-[#2ca75d] transition cursor-pointer shrink-0"
             aria-label="Go back"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="text-base font-bold text-gray-900 dark:text-white">
-              Preprocessing Pipeline
-            </h1>
-            <p className="text-xs text-gray-400 font-mono">Job: {job_id}</p>
-          </div>
+          <Link href="/" className="flex items-center gap-2 select-none">
+            <span className="text-sm font-bold font-mono tracking-tight
+                             bg-gradient-to-r from-[#2ca75d] to-[#0da6f2]
+                             bg-clip-text text-transparent">
+              viscrete
+            </span>
+            <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500 font-mono">
+              / concrete inspection
+            </span>
+          </Link>
           <div className="ml-auto flex items-center gap-2">
             {jobMeta && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 font-medium capitalize">
@@ -1363,7 +1370,7 @@ export default function PreprocessPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      <main className="max-w-5xl mx-auto px-6 py-8 pt-20 space-y-6">
         {/* Meta fetch error */}
         {metaError && (
           <div className="flex items-center gap-2 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-sm text-amber-700 dark:text-amber-300">

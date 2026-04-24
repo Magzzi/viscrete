@@ -6,110 +6,399 @@ import {
   ImageUp,
   SlidersHorizontal,
   ScanSearch,
+  FileText,
   ChevronRight,
   Workflow,
   Network,
+  Camera,
+  Video,
+  Layers,
+  Cpu,
+  GitMerge,
+  Target,
+  BarChart3,
+  Crosshair,
 } from "lucide-react";
 
 type ArchType = "process" | "system";
+type BranchTab = "image" | "video";
 
-interface StageDetail {
+interface Step {
+  num: number;
   title: string;
-  bullets: string[];
+  detail: string;
+  tag?: string;
 }
 
-interface PipelineStage {
+interface Stage {
   id: string;
+  num: string;
   label: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  process: StageDetail;
-  system: StageDetail;
+  statusFlow: string[];
+  description: string;
+  hasBranch: boolean;
+  steps?: Step[];
+  imagePipeline?: Step[];
+  videoPipeline?: Step[];
 }
 
-const stages: PipelineStage[] = [
+const STATUS_PILL: Record<string, string> = {
+  created:      "bg-gray-100 text-gray-600 dark:bg-gray-800/60 dark:text-gray-400",
+  validating:   "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  validated:    "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  failed:       "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  preprocessing:"bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+  preprocessed: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  detecting:    "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  detected:     "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  reporting:    "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+  completed:    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+};
+
+const stages: Stage[] = [
   {
     id: "input",
+    num: "01",
     label: "Input",
     icon: ImageUp,
-    process: {
-      title: "Image Acquisition",
-      bullets: [
-        "Upload concrete surface images via the web interface.",
-        "Accepts JPEG, PNG, and BMP formats up to 20 MB.",
-        "Images are validated for resolution and format compliance.",
-        "Uploaded files are stored in a project-scoped directory.",
-      ],
-    },
-    system: {
-      title: "Upload Gateway",
-      bullets: [
-        "Next.js client sends multipart form data to the FastAPI backend.",
-        "Files land in /storage/jobs/{project}/original/.",
-        "A unique job ID is generated and returned to the client.",
-        "Input validation middleware checks MIME type and file size.",
-      ],
-    },
+    statusFlow: ["created", "validating", "validated"],
+    description: "Upload images or video, validate quality via Laplacian blur detection, and extract GPS metadata.",
+    hasBranch: false,
+    steps: [
+      {
+        num: 1,
+        title: "Job Creation",
+        detail: "A UUID job record is created and stored in metadata.json with status created. Accepts image batches (JPG/PNG/BMP/TIFF) or a single video (MP4/AVI/MOV) with an optional .srt telemetry file.",
+        tag: "created",
+      },
+      {
+        num: 2,
+        title: "Blur Check — Laplacian Variance",
+        detail: "Images: Laplacian variance is computed on the full image. Videos: 10 evenly-spaced frames are sampled and their scores averaged. Any file with a score below the threshold (10.0) is marked invalid.",
+        tag: "math",
+      },
+      {
+        num: 3,
+        title: "GPS Extraction",
+        detail: "EXIF GPS tags (latitude, longitude, altitude) are parsed from each image. Videos receive GPS from SRT telemetry at detection time rather than here.",
+      },
+      {
+        num: 4,
+        title: "SRT Pairing",
+        detail: "If a .srt telemetry file was uploaded alongside a video, it is paired by filename stem — or auto-paired when there is exactly one video and one SRT. Stored for per-frame GPS + altitude during detection.",
+      },
+      {
+        num: 5,
+        title: "Location Patch (optional)",
+        detail: "Images lacking EXIF GPS can receive manually assigned coordinates: batch mode updates all files missing GPS, targeted mode updates specific file IDs.",
+        tag: "optional",
+      },
+    ],
   },
   {
     id: "preprocess",
-    label: "Pre-Process",
+    num: "02",
+    label: "Preprocessing",
     icon: SlidersHorizontal,
-    process: {
-      title: "Image Enhancement",
-      bullets: [
-        "Resize to model-compatible dimensions (e.g., 640×640).",
-        "Apply CLAHE for adaptive contrast enhancement.",
-        "Bilateral filtering smooths noise while preserving edges.",
-        "Normalized pixel values are fed to the detection model.",
-      ],
-    },
-    system: {
-      title: "Preprocessing Pipeline",
-      bullets: [
-        "Pipeline orchestrated by the preprocessing service module.",
-        "CLAHE and bilateral filter applied via OpenCV routines.",
-        "Processed images written to /storage/jobs/{project}/processed/.",
-        "Albumentations used for optional augmentation transforms.",
-      ],
-    },
+    statusFlow: ["validated", "preprocessing", "preprocessed"],
+    description: "MOCS-tuned CLAHE contrast enhancement and bilateral edge-preserving noise reduction. Branches on input type.",
+    hasBranch: true,
+    imagePipeline: [
+      {
+        num: 1,
+        title: "Feature Extraction",
+        detail: "Per image: six features computed — brightness, contrast, edge density, green ratio, saturation, and algae coverage estimate.",
+      },
+      {
+        num: 2,
+        title: "K-Means Clustering",
+        detail: "Feature vectors normalized and grouped (default K=3). One representative image per cluster selected as the centroid-nearest member.",
+        tag: "K=3",
+      },
+      {
+        num: 3,
+        title: "MOCS Optimization",
+        detail: "Multi-Objective Cat Swarm Optimization runs on each cluster representative (downscaled to 640 px wide for speed). Finds optimal clip_limit and tile_grid_size for CLAHE, balancing contrast, edge sharpness, and noise. Parameters scaled back to full resolution.",
+        tag: "catswarm",
+      },
+      {
+        num: 4,
+        title: "CLAHE Enhancement",
+        detail: "Each image enhanced using its cluster's optimized CLAHE parameters. Applied in LAB color space — only the L (luminance) channel is processed.",
+        tag: "LAB",
+      },
+      {
+        num: 5,
+        title: "Bilateral Filter",
+        detail: "Edge-preserving noise reduction applied to every CLAHE-enhanced image. Smooths flat surfaces while keeping defect boundaries sharp.",
+      },
+    ],
+    videoPipeline: [
+      {
+        num: 1,
+        title: "Frame Sampling",
+        detail: "10 frames sampled evenly across the full video duration to capture representative scene diversity.",
+      },
+      {
+        num: 2,
+        title: "Median Frame Construction",
+        detail: "A pixel-wise median frame is computed across all 10 samples, producing a representative 'average scene' free of transient content. Used as the MOCS tuning target.",
+      },
+      {
+        num: 3,
+        title: "MOCS Optimization",
+        detail: "MOCS runs once on the median frame (same Cat Swarm algorithm as image pipeline) to derive a single global clip_limit + tile_grid_size applied uniformly to all frames.",
+        tag: "catswarm",
+      },
+      {
+        num: 4,
+        title: "Parallel Frame Processing",
+        detail: "Every frame processed with CLAHE + Bilateral Filter. Frames run in a thread pool or CUDA kernel if available. Each frame downscaled to 75% during processing, then upscaled back to original resolution.",
+        tag: "parallel",
+      },
+      {
+        num: 5,
+        title: "Save Output",
+        detail: "Processed frames reassembled and written as an H.264 MP4 to processed/. CII (Contrast Improvement Index) is computed per file and stored in metadata.json.",
+        tag: "H.264",
+      },
+    ],
   },
   {
     id: "detection",
-    label: "Detection & Results",
+    num: "03",
+    label: "Detection",
     icon: ScanSearch,
-    process: {
-      title: "Defect Detection & Output",
-      bullets: [
-        "YOLOv11 model infers bounding boxes for defects.",
-        "Defects classified by type: crack, spalling, rebar exposure.",
-        "Confidence scores and severity ratings assigned per defect.",
-        "Annotated images and JSON reports generated for review.",
-      ],
-    },
-    system: {
-      title: "Inference & Storage",
-      bullets: [
-        "Detection service loads the YOLOv11-SAMPLE.pt model at startup.",
-        "Inference runs on GPU when available, falls back to CPU.",
-        "Results persisted to /storage/jobs/{project}/results/.",
-        "API returns annotated images and structured JSON to the frontend.",
-      ],
-    },
+    statusFlow: ["preprocessed", "detecting", "detected"],
+    description: "YOLOv11 inference with 3-tier GSD calibration, severity classification, and cross-frame deduplication for video.",
+    hasBranch: true,
+    imagePipeline: [
+      {
+        num: 1,
+        title: "GSD Calibration — 3-Tier System",
+        detail: "Tier 1 (ArUco marker): if a fiducial marker is detected, its known physical size gives an exact mm/pixel ratio. Tier 2 (EXIF metadata): altitude + focal length + sensor size compute GSD. Tier 3 (pixel-ratio fallback): dimension-based estimate; crack_width_mm is suppressed.",
+        tag: "calibration",
+      },
+      {
+        num: 2,
+        title: "YOLOv11 Inference",
+        detail: "YOLO runs on the processed image and returns bounding boxes with class label and confidence score. Detects: crack, hairline_crack, structural_crack, spalling, peeling, algae/algae_growth, stain/staining.",
+        tag: "YOLOv11",
+      },
+      {
+        num: 3,
+        title: "Severity Classification",
+        detail: "Cracks: min(bbox_w, bbox_h) × mm_per_pixel → Low < 1.5 mm, Medium 1.5–6 mm, High > 6 mm. Other defects: bbox area → Low < 5,000 px², Medium 5,000–25,000 px², High > 25,000 px².",
+        tag: "severity",
+      },
+      {
+        num: 4,
+        title: "Annotation & Storage",
+        detail: "YOLO draws bounding boxes with class labels onto the image and saves it to annotated/. Detection records (class, confidence, severity, coordinates, crack_width_mm) are written to metadata.json.",
+      },
+    ],
+    videoPipeline: [
+      {
+        num: 1,
+        title: "SRT Telemetry Load",
+        detail: "Paired SRT file parsed to build a timestamp → {latitude, longitude, altitude} lookup for per-frame GPS resolution during detection.",
+      },
+      {
+        num: 2,
+        title: "ArUco Calibration Lock",
+        detail: "Calibration attempted once on the first frame. If Tier 1 (ArUco marker) is found, the resulting mm/pixel ratio is locked for all subsequent frames. Otherwise falls back to per-frame Tier 2/3.",
+        tag: "calibration",
+      },
+      {
+        num: 3,
+        title: "YOLOv11 Frame Streaming",
+        detail: "YOLO streams every frame sequentially. A fully annotated output video is written to annotated/. Frames containing at least one detection are collected for deduplication.",
+        tag: "YOLOv11",
+      },
+      {
+        num: 4,
+        title: "Severity & Location Classification",
+        detail: "For each detected frame: calibration tier resolved, severity computed (same thresholds as image path), and a GPS location inferred from the bounding box center position + SRT telemetry.",
+        tag: "severity",
+      },
+      {
+        num: 5,
+        title: "Cross-Frame Deduplication",
+        detail: "Detections grouped by class, sorted by confidence (desc). A detection survives only if its bounding box does not overlap (IoU > 0.4) with any already-kept detection of the same class — eliminating repeated sightings of the same physical defect across consecutive frames.",
+        tag: "IoU > 0.4",
+      },
+    ],
+  },
+  {
+    id: "report",
+    num: "04",
+    label: "Report",
+    icon: FileText,
+    statusFlow: ["detected", "reporting", "completed"],
+    description: "Aggregate all detections, compute severity summary, and render a structured PDF report via ReportLab.",
+    hasBranch: false,
+    steps: [
+      {
+        num: 1,
+        title: "Load & Aggregate Detections",
+        detail: "All detection records loaded from metadata.json. Every DefectDetection across all files flattened into a single ordered list.",
+      },
+      {
+        num: 2,
+        title: "Summary Computation",
+        detail: "Total defect counts grouped by class (cracks, peeling, algae, spalling, staining). Severity counts computed (Low / Medium / High). Dominant severity determined as the highest-count bucket. Unique defect types present recorded.",
+        tag: "aggregate",
+      },
+      {
+        num: 3,
+        title: "GPS & Annotated Path Collection",
+        detail: "GPS coordinates (lat, lng, alt — nullable per file) and annotated image paths collected from file records for inclusion in the report.",
+      },
+      {
+        num: 4,
+        title: "PDF Generation — ReportLab",
+        detail: "PDF assembled with: job metadata header, defect summary table, severity breakdown chart, GPS coordinate listing, and annotated image snapshots. Saved as {job_id}_report.pdf.",
+        tag: "ReportLab",
+      },
+      {
+        num: 5,
+        title: "Report Record Written",
+        detail: "Report record (including pdf_path) written to metadata.json. Subsequent GET /report requests reconstruct the same aggregated data directly from metadata.json — no re-inference ever occurs.",
+        tag: "cached",
+      },
+    ],
   },
 ];
 
+// ─── Step Card ────────────────────────────────────────────────────────────────
+
+function StepCard({ step, isLast }: { step: Step; isLast: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex items-start gap-3 group">
+      <div className="flex flex-col items-center gap-0 shrink-0 pt-0.5">
+        <button
+          onClick={() => setOpen(v => !v)}
+          className={cn(
+            "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold font-mono transition-all cursor-pointer border-2 shrink-0",
+            open
+              ? "bg-[#2ca75d] border-[#2ca75d] text-white shadow-md shadow-[#2ca75d]/30"
+              : "bg-gray-50 dark:bg-[#0c0e12] border-emerald-200 dark:border-[#1e4032] text-gray-500 dark:text-gray-400 hover:border-[#2ca75d]/60 hover:text-[#2ca75d]"
+          )}
+        >
+          {step.num}
+        </button>
+        {!isLast && (
+          <div className="w-0.5 flex-1 min-h-[20px] bg-emerald-100 dark:bg-[#1e4032] mt-1" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0 pb-4">
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="w-full text-left flex items-center gap-2 cursor-pointer group/btn"
+        >
+          <span className={cn(
+            "text-sm font-semibold transition-colors",
+            open ? "text-[#2ca75d]" : "text-gray-800 dark:text-gray-100 group-hover/btn:text-[#2ca75d]"
+          )}>
+            {step.title}
+          </span>
+          {step.tag && (
+            <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold
+                             bg-emerald-50 dark:bg-[#2ca75d]/10 text-emerald-600 dark:text-[#2ca75d]
+                             border border-emerald-200 dark:border-[#2ca75d]/20">
+              {step.tag}
+            </span>
+          )}
+        </button>
+        {open && (
+          <p className="mt-1.5 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+            {step.detail}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Stage Node ───────────────────────────────────────────────────────────────
+
+function StageNode({
+  stage,
+  isActive,
+  isLast,
+  onClick,
+}: {
+  stage: Stage;
+  isActive: boolean;
+  isLast: boolean;
+  onClick: () => void;
+}) {
+  const Icon = stage.icon;
+  return (
+    <div className="flex items-center gap-0">
+      <button
+        onClick={onClick}
+        className={cn(
+          "flex flex-col items-center gap-2 p-3 sm:p-4 rounded-xl border-2 transition-all cursor-pointer min-w-[80px] sm:min-w-[110px]",
+          isActive
+            ? "border-[#2ca75d] bg-emerald-50 dark:bg-[#2ca75d]/[0.06] shadow-sm shadow-[#2ca75d]/20"
+            : "border-emerald-100 dark:border-[#1e4032] bg-white dark:bg-[#0d0f14] hover:border-[#2ca75d]/40 hover:bg-emerald-50/50 dark:hover:bg-[#2ca75d]/[0.03]"
+        )}
+      >
+        <div className={cn(
+          "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+          isActive
+            ? "bg-[#2ca75d] text-white"
+            : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
+        )}>
+          <Icon className="w-4 h-4" />
+        </div>
+        <div className="text-center">
+          <div className={cn(
+            "text-[10px] font-mono font-bold tracking-wider mb-0.5",
+            isActive ? "text-[#2ca75d]" : "text-gray-400 dark:text-gray-600"
+          )}>
+            {stage.num}
+          </div>
+          <div className={cn(
+            "text-xs font-semibold leading-tight",
+            isActive ? "text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400"
+          )}>
+            {stage.label}
+          </div>
+        </div>
+      </button>
+      {!isLast && (
+        <div className="flex items-center px-1 shrink-0">
+          <ChevronRight className={cn(
+            "w-5 h-5 transition-colors",
+            isActive ? "text-[#2ca75d]" : "text-gray-300 dark:text-gray-700"
+          )} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── AlgorithmSection ─────────────────────────────────────────────────────────
+
 const AlgorithmSection = () => {
   const [archType, setArchType] = useState<ArchType>("process");
-  const [activeStage, setActiveStage] = useState(0);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [branch, setBranch] = useState<BranchTab>("image");
 
-  const current = stages[activeStage];
-  const detail = archType === "process" ? current.process : current.system;
+  const stage = stages[activeIdx];
+  const steps = stage.hasBranch
+    ? (branch === "image" ? stage.imagePipeline! : stage.videoPipeline!)
+    : stage.steps!;
 
   return (
     <section className="w-full py-24 bg-gray-50 dark:bg-[#101115]" id="algorithm">
       <div className="container max-w-6xl mx-auto px-6">
 
-        {/* ── Header ─────────────────────────────────── */}
+        {/* ── Header ──────────────────────────────────── */}
         <div className="text-center mb-12 space-y-4">
           <p className="text-sm font-mono text-emerald-700 dark:text-[#0da6f2] uppercase tracking-widest">
             How It Works
@@ -120,9 +409,13 @@ const AlgorithmSection = () => {
               viscrete
             </span>
           </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xl mx-auto leading-relaxed">
+            A four-stage pipeline — from raw concrete imagery to a structured defect report.
+            Select a stage to explore its algorithm steps.
+          </p>
         </div>
 
-        {/* ── Architecture type toggle ────────────────── */}
+        {/* ── Architecture toggle ──────────────────────── */}
         <div className="flex justify-center mb-10">
           <div className="inline-flex rounded-lg p-1 gap-1
                           border border-emerald-200 bg-gray-100
@@ -154,36 +447,7 @@ const AlgorithmSection = () => {
           </div>
         </div>
 
-        {/* ── Pipeline stage buttons (process only) ─── */}
-        {archType === "process" && (
-          <div className="flex items-center justify-center gap-2 mb-12 flex-wrap">
-            {stages.map((stage, idx) => {
-              const Icon = stage.icon;
-              const isActive = idx === activeStage;
-              return (
-                <div key={stage.id} className="flex items-center gap-2">
-                  <button
-                    onClick={() => setActiveStage(idx)}
-                    className={cn(
-                      "flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer border",
-                      isActive
-                        ? "bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-[#2ca75d]/[0.08] dark:border-[#2ca75d]/40 dark:text-[#2ca75d]"
-                        : "bg-gray-50 border-emerald-100 text-gray-500 hover:text-gray-800 hover:border-emerald-200 dark:bg-[#0c0e12] dark:border-[#1e4032] dark:text-gray-400 dark:hover:text-white dark:hover:border-[#2ca75d]/30"
-                    )}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {stage.label}
-                  </button>
-                  {idx < stages.length - 1 && (
-                    <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 shrink-0" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── System Architecture image ──────────────── */}
+        {/* ── System Architecture ──────────────────────── */}
         {archType === "system" && (
           <div className="rounded-lg border border-emerald-200 bg-gray-100 p-4 md:p-6
                           dark:border-[#1e4032] dark:bg-[#0c0e12]">
@@ -196,50 +460,125 @@ const AlgorithmSection = () => {
           </div>
         )}
 
-        {/* ── Process Architecture detail card ───────── */}
+        {/* ── Process Architecture ─────────────────────── */}
         {archType === "process" && (
-          <>
-            <div
-              key={`process-${activeStage}`}
-              className="rounded-lg border border-emerald-200 bg-gray-100 p-8 md:p-10 animate-in fade-in duration-300
-                         dark:border-[#1e4032] dark:bg-[#0c0e12]"
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-md flex items-center justify-center
-                                bg-emerald-50 dark:bg-[#2ca75d]/15">
-                  <current.icon className="w-5 h-5 text-emerald-600 dark:text-[#2ca75d]" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  {detail.title}
-                </h3>
-              </div>
+          <div className="space-y-8">
 
-              <ul className="space-y-3">
-                {detail.bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#2ca75d]" />
-                    {b}
-                  </li>
+            {/* Stage selector flow */}
+            <div className="overflow-x-auto pb-2">
+              <div className="flex items-center justify-center min-w-max mx-auto gap-0">
+                {stages.map((s, idx) => (
+                  <StageNode
+                    key={s.id}
+                    stage={s}
+                    isActive={idx === activeIdx}
+                    isLast={idx === stages.length - 1}
+                    onClick={() => { setActiveIdx(idx); setBranch("image"); }}
+                  />
                 ))}
-              </ul>
+              </div>
             </div>
 
-            {/* ── Stage indicators ───────────────────── */}
-            <div className="flex justify-center gap-2 mt-6">
+            {/* Status flow strip */}
+            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+              {stage.statusFlow.map((s, i) => (
+                <div key={s} className="flex items-center gap-1.5">
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono",
+                    STATUS_PILL[s]
+                  )}>
+                    {s}
+                  </span>
+                  {i < stage.statusFlow.length - 1 && (
+                    <ChevronRight className="w-3.5 h-3.5 text-gray-300 dark:text-gray-700 shrink-0" />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Detail panel */}
+            <div className="rounded-xl border border-emerald-200 dark:border-[#1e4032]
+                            bg-white dark:bg-[#0d0f14] overflow-hidden">
+
+              {/* Panel header */}
+              <div className="px-6 py-4 border-b border-emerald-100 dark:border-[#1e4032]
+                              bg-emerald-50/50 dark:bg-[#2ca75d]/[0.03] flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-mono font-bold text-[#2ca75d]">{stage.num}</span>
+                    <span className="text-base font-bold text-gray-900 dark:text-white">{stage.label}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl">
+                    {stage.description}
+                  </p>
+                </div>
+                {stage.hasBranch && (
+                  <div className="flex items-center gap-1 shrink-0 rounded-lg border border-emerald-200 dark:border-[#1e4032] p-0.5 bg-white dark:bg-[#0c0e12]">
+                    <button
+                      onClick={() => setBranch("image")}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer",
+                        branch === "image"
+                          ? "bg-emerald-50 dark:bg-[#2ca75d]/15 text-emerald-700 dark:text-[#2ca75d] border border-emerald-200 dark:border-[#2ca75d]/30"
+                          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      )}
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      Image
+                    </button>
+                    <button
+                      onClick={() => setBranch("video")}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer",
+                        branch === "video"
+                          ? "bg-emerald-50 dark:bg-[#2ca75d]/15 text-emerald-700 dark:text-[#2ca75d] border border-emerald-200 dark:border-[#2ca75d]/30"
+                          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      )}
+                    >
+                      <Video className="w-3.5 h-3.5" />
+                      Video
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Step list */}
+              <div className="px-6 py-5">
+                <p className="text-[10px] font-mono font-semibold uppercase tracking-widest
+                               text-gray-400 dark:text-gray-600 mb-4">
+                  {stage.hasBranch
+                    ? `${branch === "image" ? "Image" : "Video"} pipeline — ${steps.length} steps (click to expand)`
+                    : `${steps.length} steps — click to expand`}
+                </p>
+                <div className="space-y-0">
+                  {steps.map((step, idx) => (
+                    <StepCard
+                      key={`${stage.id}-${branch}-${step.num}`}
+                      step={step}
+                      isLast={idx === steps.length - 1}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Stage dot indicators */}
+            <div className="flex justify-center gap-2">
               {stages.map((_, idx) => (
                 <button
                   key={idx}
-                  onClick={() => setActiveStage(idx)}
+                  onClick={() => { setActiveIdx(idx); setBranch("image"); }}
                   className={cn(
                     "h-1.5 rounded-full transition-all cursor-pointer",
-                    idx === activeStage
+                    idx === activeIdx
                       ? "w-8 bg-[#2ca75d]"
-                      : "w-1.5 bg-emerald-200 dark:bg-[#1e4032]"
+                      : "w-1.5 bg-emerald-200 dark:bg-[#1e4032] hover:bg-emerald-300 dark:hover:bg-[#2ca75d]/30"
                   )}
                 />
               ))}
             </div>
-          </>
+
+          </div>
         )}
 
       </div>

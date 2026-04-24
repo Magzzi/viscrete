@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   detectJob,
@@ -620,22 +621,28 @@ export default function ResultPage() {
   return (
     <div className="flex flex-col min-h-screen overflow-hidden">
       {/* HEADER */}
-      <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-          {/* Left — logo + back + title */}
+      <header className="fixed top-0 left-0 right-0 z-50
+                         border-b border-emerald-100 dark:border-[#2ca75d]/10
+                         bg-white/80 dark:bg-[#14171e]/80 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+          {/* Left — brand + back + title */}
           <div className="flex items-center gap-4">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
-              <FileImage className="w-4 h-4 text-white" />
-            </div>
-            <div className="border-l border-gray-200 dark:border-gray-700 pl-4 flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-2 select-none">
+              <span className="text-sm font-bold font-mono tracking-tight
+                               bg-gradient-to-r from-[#2ca75d] to-[#0da6f2]
+                               bg-clip-text text-transparent">
+                viscrete
+              </span>
+            </Link>
+            <div className="border-l border-emerald-100 dark:border-[#2ca75d]/20 pl-4 flex items-center gap-3">
               <button
-                className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
+                className="text-gray-400 hover:text-[#2ca75d] dark:hover:text-[#2ca75d] transition-colors cursor-pointer"
                 onClick={() => router.back()}
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-base font-bold text-gray-900 dark:text-white tracking-wide">DETECTION RESULTS</h1>
+                <h1 className="text-sm font-bold text-gray-900 dark:text-white tracking-wide">DETECTION RESULTS</h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   {projectName !== "—" ? projectName : `Job: ${jobId}`}
                 </p>
@@ -656,6 +663,8 @@ export default function ResultPage() {
           </div>
         </div>
       </header>
+      {/* Spacer for fixed header */}
+      <div className="h-12 shrink-0" />
 
       {/* Loading */}
       {isRunning && (

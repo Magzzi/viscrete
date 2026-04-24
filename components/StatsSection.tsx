@@ -9,13 +9,13 @@ const stats = [
   },
   {
     icon: Building2,
-    value: "10+",
+    value: "N/A",
     label: "Infrastructure Samples Evaluated",
     highlight: false,
   },
   {
     icon: Target,
-    value: "92%",
+    value: "81%",
     label: "Detection Accuracy",
     highlight: true,
   },

@@ -18,7 +18,7 @@ const LandingNav = () => {
             viscrete
           </span>
           <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500 font-mono">
-            / structural inspection
+            / concrete inspection
           </span>
         </Link>
 
