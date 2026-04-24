@@ -138,6 +138,19 @@ export default function ResultPage() {
 
   // Image carousel state
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [defectPage, setDefectPage] = useState(0);
+  const DEFECT_PAGE_SIZE = 5;
+
+  // Table-level defect class filter — independent of the overlay filter
+  const [tableVisibleDefects, setTableVisibleDefects] = useState<Set<string>>(new Set(['cracks', 'spalling', 'peeling', 'algae', 'staining']));
+  const toggleTableDefectClass = (cls: string) => {
+    setTableVisibleDefects(prev => {
+      const next = new Set(prev);
+      next.has(cls) ? next.delete(cls) : next.add(cls);
+      return next;
+    });
+    setDefectPage(0);
+  };
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0, naturalWidth: 0, naturalHeight: 0 });
   const [imageLoading, setImageLoading] = useState(false);
 
@@ -252,8 +265,9 @@ export default function ResultPage() {
     try {
       const { getDetectResults } = await import("@/lib/api");
       const data = await getDetectResults(jobId);
-      console.log('[Detection result (cached)]', data);
+      console.log('[Detection result (cached)]', JSON.stringify(data, null, 2));
       setDetectData(data);
+      setDefectPage(0);
       setHasRun(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load detection results");
@@ -307,8 +321,9 @@ export default function ResultPage() {
     setError(null);
     try {
       const data = await detectJob(jobId);
-      console.log('[Detection result (fresh)]', data);
+      console.log('[Detection result (fresh)]', JSON.stringify(data, null, 2));
       setDetectData(data);
+      setDefectPage(0);
       setHasRun(true);
     } catch (e: unknown) {
       if (e instanceof Error && e.message.includes("404")) {
@@ -394,9 +409,26 @@ export default function ResultPage() {
 
   // ── Image carousel ──────────────────────────────────────────────────────────
 
-  const annotatedPaths: string[] = flatData?.annotated_paths ?? [];
+  // For video jobs, build the per-frame path array from per-detection annotated_path fields.
+  // The top-level annotated_paths[] may only contain the annotated video file, not frame snapshots.
+  // frame_index is guaranteed 0-based and maps directly to the frame snapshot path on each detection.
+  const annotatedPaths: string[] = (() => {
+    if (isVideoJob && flatDetections.length > 0) {
+      const frameMap: Record<number, string> = {};
+      for (const d of flatDetections) {
+        const fi = d.frame_index;
+        const path = (d as any).annotated_path as string | undefined;
+        if (fi != null && path) frameMap[Number(fi)] = path;
+      }
+      if (Object.keys(frameMap).length > 0) {
+        const maxIdx = Math.max(...Object.keys(frameMap).map(Number));
+        return Array.from({ length: maxIdx + 1 }, (_, i) => frameMap[i] ?? '');
+      }
+    }
+    return flatData?.annotated_paths ?? [];
+  })();
   // For image jobs, filter out any video files that may appear in annotated_paths.
-  // For video jobs, annotated_paths contains the frame snapshots (no video file inside it).
+  // For video jobs, annotatedPaths is already the frame snapshot array.
   const imageAnnotatedPaths = annotatedPaths.filter(p => !isVideoPath(p));
   // Navigation counts: video uses the full annotated_paths (all snapshots);
   // image uses the filtered list.
@@ -514,6 +546,7 @@ export default function ResultPage() {
 
   // ── All detections (flat) for the defect table ──────────────────────────────
   const allDetections: Detection[] = flatDetections;
+  const tableFilteredDetections = allDetections.filter(d => tableVisibleDefects.has(d.defect_type));
 
   // ── Debug: log carousel mapping when detection data arrives ─────────────────
   useEffect(() => {
@@ -977,6 +1010,40 @@ export default function ResultPage() {
                     </div>
                   </div>
                   <div className="bg-white border border-gray-200 dark:bg-gray-950 dark:border-gray-800 rounded-2xl overflow-hidden">
+                    {/* Table filter pills */}
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex-wrap">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">Filter</span>
+                      {allDefectClasses.map(cls => {
+                        const active = tableVisibleDefects.has(cls);
+                        const dot: Record<string, string> = {
+                          cracks: 'bg-red-500', spalling: 'bg-yellow-500',
+                          peeling: 'bg-orange-500', algae: 'bg-green-500', staining: 'bg-purple-500',
+                        };
+                        return (
+                          <button
+                            key={cls}
+                            onClick={() => toggleTableDefectClass(cls)}
+                            className={cn(
+                              'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer',
+                              active
+                                ? 'bg-gray-100 border-gray-400 text-gray-900 dark:bg-gray-800 dark:border-gray-500 dark:text-white'
+                                : 'bg-transparent border-gray-300 text-gray-400 dark:border-gray-700 dark:text-gray-500',
+                            )}
+                          >
+                            <span className={cn('w-2 h-2 rounded-full', dot[cls], !active && 'opacity-40')} />
+                            {cls.charAt(0).toUpperCase() + cls.slice(1)}
+                          </button>
+                        );
+                      })}
+                      {tableVisibleDefects.size < allDefectClasses.length && (
+                        <button
+                          onClick={() => { setTableVisibleDefects(new Set(['cracks', 'spalling', 'peeling', 'algae', 'staining'])); setDefectPage(0); }}
+                          className="ml-auto text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
@@ -991,7 +1058,8 @@ export default function ResultPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {allDetections.map((d, i) => {
+                          {tableFilteredDetections.slice(defectPage * DEFECT_PAGE_SIZE, (defectPage + 1) * DEFECT_PAGE_SIZE).map((d, i) => {
+                            const i_global = defectPage * DEFECT_PAGE_SIZE + i;
                             // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             const det = d as any;
                             // Use job.files count (not annotated_paths length) to detect single-file jobs.
@@ -1000,6 +1068,8 @@ export default function ResultPage() {
                             const isSingleFile = nonVideoFileCount <= 1;
                             const fileId = det.file_id ?? (isSingleFile ? flatData?.file_id : undefined);
                             const filename = fileId ? fileGpsMap[fileId]?.filename : undefined;
+                            const annotatedPath = det.annotated_path as string | undefined;
+                            const frameFilename = annotatedPath ? annotatedPath.split('/').pop() : undefined;
 
                             // frame_index (non-null) → video: direct position in annotated_paths[].
                             // null → image/old cache: resolve via file_id → fileIdToCarouselIndex.
@@ -1017,7 +1087,7 @@ export default function ResultPage() {
 
                             return (
                             <tr
-                              key={i}
+                              key={i_global}
                               className={cn(
                                 "border-b border-gray-100 dark:border-gray-800/50 transition",
                                 isClickable
@@ -1035,15 +1105,32 @@ export default function ResultPage() {
                               }}
                             >
                               <td className="px-4 py-3">
-                                <span
-                                  className={cn(
-                                    "font-mono text-xs truncate max-w-[140px] block",
-                                    isClickable ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"
-                                  )}
-                                  title={filename}
-                                >
-                                  {filename ?? "—"}
-                                </span>
+                                {isVideoJob && frameIdx !== null ? (
+                                  <div className="flex flex-col gap-0.5 min-w-0">
+                                    <span
+                                      className={cn(
+                                        "font-mono text-xs truncate max-w-[160px] block",
+                                        isClickable ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"
+                                      )}
+                                      title={frameFilename}
+                                    >
+                                      {frameFilename ?? "—"}
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">
+                                      Frame {frameIdx}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span
+                                    className={cn(
+                                      "font-mono text-xs truncate max-w-[140px] block",
+                                      isClickable ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"
+                                    )}
+                                    title={filename}
+                                  >
+                                    {filename ?? "—"}
+                                  </span>
+                                )}
                               </td>
                               <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200 capitalize">{d.defect_type}</td>
                               <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{Math.round(d.confidence * 100)}%</td>
@@ -1087,6 +1174,38 @@ export default function ResultPage() {
                         </tbody>
                       </table>
                     </div>
+                    {tableFilteredDetections.length > DEFECT_PAGE_SIZE && (
+                      <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-800">
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          {defectPage * DEFECT_PAGE_SIZE + 1}–{Math.min((defectPage + 1) * DEFECT_PAGE_SIZE, tableFilteredDetections.length)} of {tableFilteredDetections.length}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setDefectPage(p => Math.max(0, p - 1))}
+                            disabled={defectPage === 0}
+                            className="px-2.5 py-1 rounded-md text-xs font-medium transition
+                              text-gray-600 dark:text-gray-400
+                              hover:bg-gray-100 dark:hover:bg-gray-800
+                              disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            ‹ Prev
+                          </button>
+                          <span className="px-2 text-xs text-gray-400 dark:text-gray-500">
+                            {defectPage + 1} / {Math.ceil(tableFilteredDetections.length / DEFECT_PAGE_SIZE)}
+                          </span>
+                          <button
+                            onClick={() => setDefectPage(p => Math.min(Math.ceil(tableFilteredDetections.length / DEFECT_PAGE_SIZE) - 1, p + 1))}
+                            disabled={defectPage >= Math.ceil(tableFilteredDetections.length / DEFECT_PAGE_SIZE) - 1}
+                            className="px-2.5 py-1 rounded-md text-xs font-medium transition
+                              text-gray-600 dark:text-gray-400
+                              hover:bg-gray-100 dark:hover:bg-gray-800
+                              disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            Next ›
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
