@@ -394,10 +394,13 @@ export default function ResultPage() {
 
   // ── Image carousel ──────────────────────────────────────────────────────────
 
-  // Split annotated_paths into image frames only (video path comes from annotated_video_path)
   const annotatedPaths: string[] = flatData?.annotated_paths ?? [];
+  // For image jobs, filter out any video files that may appear in annotated_paths.
+  // For video jobs, annotated_paths contains the frame snapshots (no video file inside it).
   const imageAnnotatedPaths = annotatedPaths.filter(p => !isVideoPath(p));
-  const totalImages = imageAnnotatedPaths.length;
+  // Navigation counts: video uses the full annotated_paths (all snapshots);
+  // image uses the filtered list.
+  const totalImages = isVideoJob ? annotatedPaths.length : imageAnnotatedPaths.length;
 
   // Use annotated_video_path directly from the detection response — do not construct manually
   const annotatedVideoPath: string | null = flatData?.annotated_video_path ?? null;
@@ -423,14 +426,22 @@ export default function ResultPage() {
     });
   };
 
-  const currentAnnotatedPath = imageAnnotatedPaths[currentImageIndex];
+  // frame_index directly indexes annotated_paths[] (unfiltered).
+  // image file_id indexes imageAnnotatedPaths[] (filtered, video files excluded).
+  const currentAnnotatedPath = isVideoJob
+    ? annotatedPaths[currentImageIndex]
+    : imageAnnotatedPaths[currentImageIndex];
 
-  // Derive preprocessed path from annotated path:
-  // e.g. "jobs/uuid/annotated/file_annotated.jpg" → "jobs/uuid/processed/file.jpg"
+  // Video: show the annotated snapshot directly (backend burned boxes in).
+  // Image: show the preprocessed image so frontend overlays render on a clean base.
   const currentImageSrc = currentAnnotatedPath
-    ? `${API_BASE_URL}/static/${currentAnnotatedPath
-        .replace('/annotated/', '/processed/')
-        .replace(/_annotated(\.[^.]+)$/, '$1')}`
+    ? `${API_BASE_URL}/static/${
+        isVideoJob
+          ? currentAnnotatedPath
+          : currentAnnotatedPath
+              .replace('/annotated/', '/processed/')
+              .replace(/_annotated(\.[^.]+)$/, '$1')
+      }`
     : null;
 
   // Reset dimensions and mark loading when the displayed image changes
@@ -458,19 +469,24 @@ export default function ResultPage() {
     return () => ro.disconnect();
   }, [currentImageSrc]);
 
-  // Resolve the file_id of whichever image is currently shown in the carousel
+  // Resolve the file_id of whichever image is currently shown (image jobs only)
   const currentFileId = imageAnnotatedPaths.length === 1
     ? flatData?.file_id
     : Object.entries(fileIdToCarouselIndex).find(([, idx]) => idx === currentImageIndex)?.[0];
 
   // While a highlight is active, show only that exact detection (reference equality).
-  // Otherwise filter by current image and visible defect classes.
+  // Otherwise filter by current image/frame and visible defect classes.
   const getCurrentDetections = (): Detection[] => {
     if (highlightedDetection) {
       return flatDetections.filter(d => d === highlightedDetection);
     }
     return flatDetections.filter(d => {
       if (!visibleDefects.has(d.defect_type as DefectClass)) return false;
+      if (d.frame_index != null) {
+        // Video: filter by frame position in annotated_paths[]
+        return Number(d.frame_index) === currentImageIndex;
+      }
+      // Image (or old cached record with null frame_index): filter by file_id
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const detFileId = (d as any).file_id ?? (imageAnnotatedPaths.length === 1 ? flatData?.file_id : undefined);
       if (currentFileId && detFileId && detFileId !== currentFileId) return false;
@@ -498,6 +514,16 @@ export default function ResultPage() {
 
   // ── All detections (flat) for the defect table ──────────────────────────────
   const allDetections: Detection[] = flatDetections;
+
+  // ── Debug: log carousel mapping when detection data arrives ─────────────────
+  useEffect(() => {
+    if (!flatDetections.length) return;
+    console.log('[carousel debug] annotated_paths:', annotatedPaths);
+    console.log('[carousel debug] imageAnnotatedPaths:', imageAnnotatedPaths);
+    console.log('[carousel debug] fileIdToCarouselIndex:', fileIdToCarouselIndex);
+    console.log('[carousel debug] detections[0]:', flatDetections[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatDetections.length]);
 
   // ── Debug: log location data per defect ─────────────────────────────────────
   useEffect(() => {
@@ -898,9 +924,9 @@ export default function ResultPage() {
               </div>
 
               {/* Filename label */}
-              {imageAnnotatedPaths[currentImageIndex] && (
+              {currentAnnotatedPath && (
                 <p className="text-center text-xs font-mono text-gray-500 dark:text-gray-400 mb-3 truncate">
-                  {imageAnnotatedPaths[currentImageIndex].split('/').pop()}
+                  {currentAnnotatedPath.split('/').pop()}
                 </p>
               )}
 
@@ -968,13 +994,26 @@ export default function ResultPage() {
                           {allDetections.map((d, i) => {
                             // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             const det = d as any;
-                            const isSingleFile = imageAnnotatedPaths.length === 1;
+                            // Use job.files count (not annotated_paths length) to detect single-file jobs.
+                            // annotated_paths may be empty even when there is exactly one image.
+                            const nonVideoFileCount = Object.keys(fileIdToCarouselIndex).length;
+                            const isSingleFile = nonVideoFileCount <= 1;
                             const fileId = det.file_id ?? (isSingleFile ? flatData?.file_id : undefined);
                             const filename = fileId ? fileGpsMap[fileId]?.filename : undefined;
-                            const carouselIndex = isSingleFile
-                              ? 0
-                              : (fileId !== undefined ? (fileIdToCarouselIndex[fileId] ?? -1) : -1);
-                            const isClickable = carouselIndex !== -1;
+
+                            // frame_index (non-null) → video: direct position in annotated_paths[].
+                            // null → image/old cache: resolve via file_id → fileIdToCarouselIndex.
+                            const frameIdx = d.frame_index != null ? Number(d.frame_index) : null;
+                            const carouselIndex = frameIdx !== null && !isNaN(frameIdx)
+                              ? frameIdx
+                              : isSingleFile
+                                ? 0
+                                : (fileId !== undefined ? (fileIdToCarouselIndex[fileId] ?? -1) : -1);
+                            // Do not gate on imageAnnotatedPaths.length — that array may be empty
+                            // even when images exist (annotated_paths population is a separate concern).
+                            const isClickable = frameIdx !== null
+                              ? !isNaN(frameIdx) && frameIdx >= 0
+                              : carouselIndex >= 0;
 
                             return (
                             <tr
@@ -990,7 +1029,9 @@ export default function ResultPage() {
                                 setViewMode("images");
                                 setCurrentImageIndex(carouselIndex);
                                 highlightDetection(d);
-                                carouselRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                setTimeout(() => {
+                                  carouselRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                }, 50);
                               }}
                             >
                               <td className="px-4 py-3">

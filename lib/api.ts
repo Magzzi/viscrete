@@ -91,6 +91,7 @@ export interface Detection {
   area_px?: number | null;
   bounding_box: { x1: number; y1: number; x2: number; y2: number };
   location?: DetectionLocation | null;
+  frame_index?: number | null;
 }
 
 export interface DetectionResult {
