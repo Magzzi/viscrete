@@ -1227,7 +1227,7 @@ export default function ResultPage() {
               </div>
               <div className="bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-900/50 rounded-lg p-4">
                 <div className="text-red-600 dark:text-red-400 text-3xl font-bold mb-1">{cracksCount}</div>
-                <div className="text-red-700 dark:text-red-300 text-sm">Cracks</div>
+                <div className="text-red-700 dark:text-red-300 text-sm">Crack</div>
               </div>
               <div className="bg-yellow-50 border border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-900/50 rounded-lg p-4">
                 <div className="text-yellow-600 dark:text-yellow-400 text-3xl font-bold mb-1">{spallingCount}</div>

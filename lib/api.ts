@@ -98,11 +98,10 @@ export interface DetectionResult {
   filename: string;
   annotated_path?: string;
   defect_counts: {
-    cracks: number;
+    crack: number;
     spalling: number;
     peeling: number;
     algae: number;
-    staining: number;
   };
   total_defects: number;
   detections: Detection[];
@@ -113,11 +112,10 @@ export interface DetectResponse {
   annotated_paths: string[];
   total_defect_count: number;
   total_defect_counts: {
-    cracks: number;
+    crack: number;
     spalling: number;
     peeling: number;
     algae: number;
-    staining: number;
   };
 }
 
