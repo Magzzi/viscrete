@@ -70,27 +70,24 @@ function severityBadge(s: Severity | undefined) {
 }
 
 const defectBorderColor: Record<string, string> = {
-  cracks: 'border-red-500',
+  crack: 'border-red-500',
   spalling: 'border-yellow-500',
   peeling: 'border-orange-500',
   algae: 'border-green-500',
-  staining: 'border-purple-500',
 };
 
 const defectBgColor: Record<string, string> = {
-  cracks: 'bg-red-500/20',
+  crack: 'bg-red-500/20',
   spalling: 'bg-yellow-500/20',
   peeling: 'bg-orange-500/20',
   algae: 'bg-green-500/20',
-  staining: 'bg-purple-500/20',
 };
 
 const defectLabelBg: Record<string, string> = {
-  cracks: 'bg-red-500',
+  crack: 'bg-red-500',
   spalling: 'bg-yellow-500',
   peeling: 'bg-orange-500',
   algae: 'bg-green-500',
-  staining: 'bg-purple-500',
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -127,12 +124,11 @@ export default function ResultPage() {
 
   // Derived counts from total_defect_counts (API-provided, keyed by defect type)
   const defectCounts = flatData?.total_defect_counts ?? {};
-  const cracksCount   = defectCounts.cracks   ?? 0;
+  const cracksCount   = defectCounts.crack     ?? 0;
   const spallingCount = defectCounts.spalling  ?? 0;
   const peelingCount  = defectCounts.peeling   ?? 0;
   const algaeCount    = defectCounts.algae     ?? 0;
-  const stainCount    = defectCounts.stain     ?? 0;
-  const totalDefectCount: number = flatData?.total_defects ?? (cracksCount + spallingCount + peelingCount + algaeCount + stainCount);
+  const totalDefectCount: number = flatData?.total_defects ?? (cracksCount + spallingCount + peelingCount + algaeCount);
 
   // View mode — images (carousel) vs video player
   const [viewMode, setViewMode] = useState<"images" | "video">("images");
@@ -143,7 +139,7 @@ export default function ResultPage() {
   const DEFECT_PAGE_SIZE = 5;
 
   // Table-level defect class filter — independent of the overlay filter
-  const [tableVisibleDefects, setTableVisibleDefects] = useState<Set<string>>(new Set(['cracks', 'spalling', 'peeling', 'algae', 'staining']));
+  const [tableVisibleDefects, setTableVisibleDefects] = useState<Set<string>>(new Set(['crack', 'spalling', 'peeling', 'algae']));
   const toggleTableDefectClass = (cls: string) => {
     setTableVisibleDefects(prev => {
       const next = new Set(prev);
@@ -169,7 +165,7 @@ export default function ResultPage() {
   const [showColorOverlay, setShowColorOverlay] = useState(false);
 
   // Per-class visibility
-  const allDefectClasses = ['cracks', 'spalling', 'peeling', 'algae', 'staining'] as const;
+  const allDefectClasses = ['crack', 'spalling', 'peeling', 'algae'] as const;
   type DefectClass = typeof allDefectClasses[number];
   const [visibleDefects, setVisibleDefects] = useState<Set<DefectClass>>(new Set(allDefectClasses));
   const toggleDefectClass = (cls: DefectClass) =>
@@ -810,8 +806,8 @@ export default function ResultPage() {
                   {allDefectClasses.map(cls => {
                     const active = visibleDefects.has(cls);
                     const dot: Record<string, string> = {
-                      cracks: 'bg-red-500', spalling: 'bg-yellow-500',
-                      peeling: 'bg-orange-500', algae: 'bg-green-500', staining: 'bg-purple-500',
+                      crack: 'bg-red-500', spalling: 'bg-yellow-500',
+                      peeling: 'bg-orange-500', algae: 'bg-green-500',
                     };
                     return (
                       <button
@@ -1025,8 +1021,8 @@ export default function ResultPage() {
                       {allDefectClasses.map(cls => {
                         const active = tableVisibleDefects.has(cls);
                         const dot: Record<string, string> = {
-                          cracks: 'bg-red-500', spalling: 'bg-yellow-500',
-                          peeling: 'bg-orange-500', algae: 'bg-green-500', staining: 'bg-purple-500',
+                          crack: 'bg-red-500', spalling: 'bg-yellow-500',
+                          peeling: 'bg-orange-500', algae: 'bg-green-500',
                         };
                         return (
                           <button
@@ -1046,7 +1042,7 @@ export default function ResultPage() {
                       })}
                       {tableVisibleDefects.size < allDefectClasses.length && (
                         <button
-                          onClick={() => { setTableVisibleDefects(new Set(['cracks', 'spalling', 'peeling', 'algae', 'staining'])); setDefectPage(0); }}
+                          onClick={() => { setTableVisibleDefects(new Set(['crack', 'spalling', 'peeling', 'algae'])); setDefectPage(0); }}
                           className="ml-auto text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition"
                         >
                           Reset
@@ -1244,10 +1240,6 @@ export default function ResultPage() {
               <div className="bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-900/50 rounded-lg p-4">
                 <div className="text-green-600 dark:text-green-400 text-3xl font-bold mb-1">{algaeCount}</div>
                 <div className="text-green-700 dark:text-green-300 text-sm">Algae</div>
-              </div>
-              <div className="bg-purple-50 border border-purple-200 dark:bg-purple-950/30 dark:border-purple-900/50 rounded-lg p-4">
-                <div className="text-purple-600 dark:text-purple-400 text-3xl font-bold mb-1">{stainCount}</div>
-                <div className="text-purple-700 dark:text-purple-300 text-sm">Stain</div>
               </div>
             </div>
 
