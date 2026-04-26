@@ -122,12 +122,12 @@ export default function ResultPage() {
   const flatData = detectData as any;
   const flatDetections: Detection[] = flatData?.detections ?? [];
 
-  // Derived counts from total_defect_counts (API-provided, keyed by defect type)
-  const defectCounts = flatData?.total_defect_counts ?? {};
-  const cracksCount   = defectCounts.crack     ?? 0;
-  const spallingCount = defectCounts.spalling  ?? 0;
-  const peelingCount  = defectCounts.peeling   ?? 0;
-  const algaeCount    = defectCounts.algae     ?? 0;
+  // Derive per-class counts from the detections array.
+  // The API's total_defect_counts field is unreliable — counting from flatDetections is the ground truth.
+  const cracksCount   = flatDetections.filter(d => d.defect_type === 'crack').length;
+  const spallingCount = flatDetections.filter(d => d.defect_type === 'spalling').length;
+  const peelingCount  = flatDetections.filter(d => d.defect_type === 'peeling').length;
+  const algaeCount    = flatDetections.filter(d => d.defect_type === 'algae').length;
   const totalDefectCount: number = flatData?.total_defects ?? (cracksCount + spallingCount + peelingCount + algaeCount);
 
   // View mode — images (carousel) vs video player
