@@ -102,7 +102,6 @@ export default function ResultPage() {
   const [hasRun, setHasRun] = useState(false);
   const [detectData, setDetectData] = useState<DetectResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [needsDetection, setNeedsDetection] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [isVideoJob, setIsVideoJob] = useState(false);
 
@@ -243,7 +242,7 @@ export default function ResultPage() {
             return;
           }
           if (job.status === "preprocessed") {
-            setNeedsDetection(true);
+            runDetection();
             return;
           }
         }
@@ -695,25 +694,6 @@ export default function ResultPage() {
                 )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Needs Detection */}
-      {needsDetection && !isRunning && !hasRun && (
-        <div className="flex flex-col items-center justify-center flex-1 gap-6 bg-gray-100 dark:bg-gray-900 p-8">
-          <div className="bg-white border border-gray-200 dark:bg-gray-950 dark:border-gray-700 rounded-2xl p-8 max-w-md w-full text-center">
-            <FileText className="w-10 h-10 text-blue-400 mx-auto mb-4" />
-            <h2 className="text-gray-900 dark:text-white font-semibold text-lg mb-2">Ready for Detection</h2>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-              Images have been preprocessed. Run the detection process to identify concrete defects.
-            </p>
-            <button
-              onClick={() => { setNeedsDetection(false); runDetection(); }}
-              className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition mx-auto"
-            >
-              Run Detection
-            </button>
           </div>
         </div>
       )}
