@@ -112,13 +112,13 @@ const stages: Stage[] = [
       },
       {
         num: 2,
-        title: "K-Means Clustering",
+        title: "Cluster Assignment",
         detail: "Feature vectors normalized and grouped (default K=3). One representative image per cluster selected as the centroid-nearest member.",
         tag: "K=3",
       },
       {
         num: 3,
-        title: "MOCS Optimization",
+        title: "Parameter Lookup",
         detail: "Multi-Objective Cat Swarm Optimization runs on each cluster representative (downscaled to 640 px wide for speed). Finds optimal clip_limit and tile_grid_size for CLAHE, balancing contrast, edge sharpness, and noise. Parameters scaled back to full resolution.",
         tag: "catswarm",
       },
@@ -147,7 +147,7 @@ const stages: Stage[] = [
       },
       {
         num: 3,
-        title: "MOCS Optimization",
+        title: "PKL Lookup",
         detail: "MOCS runs once on the median frame (same Cat Swarm algorithm as image pipeline) to derive a single global clip_limit + tile_grid_size applied uniformly to all frames.",
         tag: "catswarm",
       },

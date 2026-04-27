@@ -121,15 +121,15 @@ const ALREADY_PREPROCESSED = new Set([
 // Fallback step names used before pipeline_init fires or for already-done jobs
 const IMAGE_STEPS = [
   "Feature Extraction",
-  "Clustering",
-  "MOCS Optimization",
+  "Cluster Assignment",
+  "Parameter Lookup",
   "CLAHE Enhancement",
   "Bilateral Filter",
 ];
 const VIDEO_STEPS = [
   "Frame Sampling",
   "Median Frame Construction",
-  "MOCS Optimization",
+  "PKL Lookup",
   "Frame Processing",
   "Save Output",
 ];
