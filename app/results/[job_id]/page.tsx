@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
-  detectJob,
   generateReport,
   type DetectResponse,
   type Detection,
@@ -292,14 +291,18 @@ export default function ResultPage() {
           return;
         }
         if (job.status === "detecting") {
-          // Still running — check again in 2 s
           setTimeout(tick, 2000);
           return;
         }
-        // Unexpected status (e.g. backend rolled back to preprocessed on error)
+        if (job.status === "failed") {
+          setIsPolling(false);
+          setIsRunning(false);
+          setError("Detection failed on the server.");
+          return;
+        }
         setIsPolling(false);
         setIsRunning(false);
-        setError(`Unexpected job status during detection: ${job.status}`);
+        setError(`Unexpected job status: ${job.status}`);
       } catch (e: unknown) {
         if (!mountedRef.current) return;
         setIsPolling(false);
@@ -316,18 +319,18 @@ export default function ResultPage() {
     setHasRun(false);
     setError(null);
     try {
-      const data = await detectJob(jobId);
-      console.log('[Detection result (fresh)]', JSON.stringify(data, null, 2));
-      setDetectData(data);
-      setDefectPage(0);
-      setHasRun(true);
+      const res = await fetch(
+        `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/detect`,
+        { method: "POST" }
+      );
+      if (!mountedRef.current) return;
+      if (res.status === 404) { setError("Job not found."); setIsRunning(false); return; }
+      if (!res.ok && res.status !== 409) { setError(`Detection failed (HTTP ${res.status})`); setIsRunning(false); return; }
+      // 202 = inference started; 409 = already detecting — poll until resolved
+      pollForDetection();
     } catch (e: unknown) {
-      if (e instanceof Error && e.message.includes("404")) {
-        setError("Job not found.");
-      } else {
-        setError(e instanceof Error ? e.message : "Detection failed");
-      }
-    } finally {
+      if (!mountedRef.current) return;
+      setError(e instanceof Error ? e.message : "Detection failed");
       setIsRunning(false);
     }
   }
