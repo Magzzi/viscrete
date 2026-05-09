@@ -23,7 +23,15 @@ const LandingNav = () => {
         </Link>
 
         {/* Right side */}
-        <ModeToggle />
+        <div className="flex items-center gap-4">
+          <Link
+            href="/instructions"
+            className="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+          >
+            How to Use
+          </Link>
+          <ModeToggle />
+        </div>
       </div>
     </header>
   );

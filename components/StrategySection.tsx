@@ -25,7 +25,7 @@ const strategies = [
 
 const StrategySection = () => {
   return (
-    <section className="w-full py-24 bg-white dark:bg-[#14171e]">
+    <section className="w-full py-24 bg-gray-50 dark:bg-[#101115]">
       <div className="container max-w-5xl mx-auto px-6">
         <div className="text-center mb-16 space-y-4">
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
@@ -41,13 +41,13 @@ const StrategySection = () => {
             <div
               key={item.title}
               className="p-6 rounded-lg transition-colors border
-                         border-amber-200/60 bg-amber-50/40 hover:border-amber-300
-                         dark:border-[#4a411e]/50 dark:bg-[#4a411e]/10 dark:hover:border-[#e5ac0c]/50"
+                         border-emerald-100 bg-gray-50 hover:border-emerald-300
+                         dark:border-[#1e4032] dark:bg-[#101115] dark:hover:border-[#2ca75d]/50"
             >
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-md flex items-center justify-center shrink-0
-                                bg-amber-100 dark:bg-[#4a411e]">
-                  <item.icon className="w-5 h-5 text-amber-600 dark:text-[#e5ac0c]" />
+                                bg-emerald-50 dark:bg-[#1e4032]">
+                  <item.icon className="w-5 h-5 text-emerald-600 dark:text-[#2ca75d]" />
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-white">

@@ -4,6 +4,7 @@ import HeroSection from "@/components/HeroSection";
 import StatsSection from "@/components/StatsSection";
 import TechnologySection from "@/components/TechnologySection";
 import AlgorithmSection from "@/components/AlgorithmSection";
+import DatasetSection from "@/components/DatasetSection";
 import StrategySection from "@/components/StrategySection";
 import Footer from "@/components/Footer";
 
@@ -17,6 +18,7 @@ export default function Home() {
         <StatsSection />
         <TechnologySection />
         <AlgorithmSection />
+        <DatasetSection />
         <StrategySection />
         <Footer />
       </div>

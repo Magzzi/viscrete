@@ -122,14 +122,13 @@ const ALREADY_PREPROCESSED = new Set([
 const IMAGE_STEPS = [
   "Feature Extraction",
   "Cluster Assignment",
-  "Parameter Lookup",
+  "MOCS Optimization",
   "CLAHE Enhancement",
-  "Bilateral Filter",
 ];
 const VIDEO_STEPS = [
   "Frame Sampling",
   "Median Frame Construction",
-  "PKL Lookup",
+  "MOCS Optimization",
   "Frame Processing",
   "Save Output",
 ];

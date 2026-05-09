@@ -52,21 +52,7 @@ function isVideoPath(p: string) {
   return VIDEO_EXTS.has(ext);
 }
 
-type Severity = "Low" | "Medium" | "High";
-
 const REDIRECT_STATUSES = new Set(["detected", "reporting", "completed"]);
-
-function severityBadge(s: Severity | undefined) {
-  if (!s) return null;
-  const cls = {
-    Low: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-    Medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-    High: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  }[s];
-  return (
-    <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-bold", cls)}>{s}</span>
-  );
-}
 
 const defectBorderColor: Record<string, string> = {
   crack: 'border-red-500',
@@ -579,11 +565,6 @@ export default function ResultPage() {
     });
   }, [allDetections, siteLocation, fileGpsMap]);
 
-  // ── Severity counts ─────────────────────────────────────────────────────────
-  const lowCount = allDetections.filter(d => d.severity === "Low").length;
-  const midCount = allDetections.filter(d => d.severity === "Medium").length;
-  const highCount = allDetections.filter(d => d.severity === "High").length;
-
   // ── Location resolution — builds composite display segments ────────────────
   type ResolvedLocation = {
     siteLabel: string;
@@ -989,12 +970,6 @@ export default function ResultPage() {
                     <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Defect Summary</h2>
                     <div className="flex items-center gap-2 text-sm">
                       <span className="font-medium text-gray-700 dark:text-gray-300">{totalDefectCount} defect{totalDefectCount !== 1 ? "s" : ""} detected</span>
-                      <span className="text-gray-300 dark:text-gray-600">•</span>
-                      <span className="text-emerald-400 font-medium">{lowCount} Low</span>
-                      <span className="text-gray-600">•</span>
-                      <span className="text-amber-400 font-medium">{midCount} Medium</span>
-                      <span className="text-gray-600">•</span>
-                      <span className="text-red-400 font-medium">{highCount} High</span>
                     </div>
                   </div>
                   <div className="bg-white border border-gray-200 dark:bg-gray-950 dark:border-gray-800 rounded-2xl overflow-hidden">
@@ -1039,9 +1014,6 @@ export default function ResultPage() {
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Image</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Defect Type</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Confidence</th>
-                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Severity</th>
-                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Crack Width</th>
-                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Area</th>
                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th>
                           </tr>
                         </thead>
@@ -1122,9 +1094,6 @@ export default function ResultPage() {
                               </td>
                               <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200 capitalize">{d.defect_type}</td>
                               <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{Math.round(d.confidence * 100)}%</td>
-                              <td className="px-4 py-3">{severityBadge(d.severity)}</td>
-                              <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{d.crack_width_mm != null ? `${d.crack_width_mm.toFixed(1)} mm` : "—"}</td>
-                              <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{d.area_px != null ? `${d.area_px.toLocaleString()} px²` : "—"}</td>
                               <td className="px-4 py-3">
                                 {(() => {
                                   const resolved = resolveDefectLocation(d);
@@ -1223,39 +1192,6 @@ export default function ResultPage() {
               <div className="bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-900/50 rounded-lg p-4">
                 <div className="text-green-600 dark:text-green-400 text-3xl font-bold mb-1">{algaeCount}</div>
                 <div className="text-green-700 dark:text-green-300 text-sm">Algae</div>
-              </div>
-            </div>
-
-            <div className="w-full h-px bg-gray-200 dark:bg-gray-800 mb-6" />
-
-            {/* Severity breakdown */}
-            <div className="mb-6">
-              <div className="text-xs text-gray-500 dark:text-gray-400 uppercase mb-3 tracking-wider">Severity Breakdown</div>
-              <div className="space-y-3">
-                {([
-                  { label: "Low",    count: lowCount,  bar: "bg-emerald-500", text: "text-emerald-400", track: "bg-emerald-950/50" },
-                  { label: "Medium", count: midCount,  bar: "bg-amber-500",   text: "text-amber-400",   track: "bg-amber-950/50"   },
-                  { label: "High",   count: highCount, bar: "bg-red-500",     text: "text-red-400",     track: "bg-red-950/50"     },
-                ] as const).map(({ label, count, bar, text, track }) => {
-                  const pct = totalDefectCount > 0 ? Math.round((count / totalDefectCount) * 100) : 0;
-                  return (
-                    <div key={label}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={cn("text-sm font-medium", text)}>{label}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 dark:text-gray-500">{pct}%</span>
-                          <span className={cn("px-2 py-0.5 rounded-full text-xs font-bold text-white", bar)}>{count}</span>
-                        </div>
-                      </div>
-                      <div className={cn("w-full h-2 rounded-full overflow-hidden", track)}>
-                        <div
-                          className={cn("h-full rounded-full transition-all duration-500", bar)}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
 

@@ -102,7 +102,7 @@ const stages: Stage[] = [
     label: "Preprocessing",
     icon: SlidersHorizontal,
     statusFlow: ["validated", "preprocessing", "preprocessed"],
-    description: "MOCS-tuned CLAHE contrast enhancement and bilateral edge-preserving noise reduction. Branches on input type.",
+    description: "MOCS-optimized CLAHE contrast enhancement. Branches on input type.",
     hasBranch: true,
     imagePipeline: [
       {
@@ -118,7 +118,7 @@ const stages: Stage[] = [
       },
       {
         num: 3,
-        title: "Parameter Lookup",
+        title: "MOCS Optimization",
         detail: "Multi-Objective Cat Swarm Optimization runs on each cluster representative (downscaled to 640 px wide for speed). Finds optimal clip_limit and tile_grid_size for CLAHE, balancing contrast, edge sharpness, and noise. Parameters scaled back to full resolution.",
         tag: "catswarm",
       },
@@ -127,11 +127,6 @@ const stages: Stage[] = [
         title: "CLAHE Enhancement",
         detail: "Each image enhanced using its cluster's optimized CLAHE parameters. Applied in LAB color space — only the L (luminance) channel is processed.",
         tag: "LAB",
-      },
-      {
-        num: 5,
-        title: "Bilateral Filter",
-        detail: "Edge-preserving noise reduction applied to every CLAHE-enhanced image. Smooths flat surfaces while keeping defect boundaries sharp.",
       },
     ],
     videoPipeline: [
@@ -147,14 +142,14 @@ const stages: Stage[] = [
       },
       {
         num: 3,
-        title: "PKL Lookup",
+        title: "MOCS Optimization",
         detail: "MOCS runs once on the median frame (same Cat Swarm algorithm as image pipeline) to derive a single global clip_limit + tile_grid_size applied uniformly to all frames.",
         tag: "catswarm",
       },
       {
         num: 4,
         title: "Parallel Frame Processing",
-        detail: "Every frame processed with CLAHE + Bilateral Filter. Frames run in a thread pool or CUDA kernel if available. Each frame downscaled to 75% during processing, then upscaled back to original resolution.",
+        detail: "Every frame processed with CLAHE. Frames run in a thread pool or CUDA kernel if available. Each frame downscaled to 75% during processing, then upscaled back to original resolution.",
         tag: "parallel",
       },
       {
@@ -171,31 +166,19 @@ const stages: Stage[] = [
     label: "Detection",
     icon: ScanSearch,
     statusFlow: ["preprocessed", "detecting", "detected"],
-    description: "YOLOv11 inference with 3-tier GSD calibration, severity classification, and cross-frame deduplication for video.",
+    description: "YOLOv11 inference with cross-frame deduplication for video.",
     hasBranch: true,
     imagePipeline: [
       {
         num: 1,
-        title: "GSD Calibration — 3-Tier System",
-        detail: "Tier 1 (ArUco marker): if a fiducial marker is detected, its known physical size gives an exact mm/pixel ratio. Tier 2 (EXIF metadata): altitude + focal length + sensor size compute GSD. Tier 3 (pixel-ratio fallback): dimension-based estimate; crack_width_mm is suppressed.",
-        tag: "calibration",
-      },
-      {
-        num: 2,
         title: "YOLOv11 Inference",
         detail: "YOLO runs on the processed image and returns bounding boxes with class label and confidence score. Detects: crack, hairline_crack, structural_crack, spalling, peeling, algae/algae_growth, stain/staining.",
         tag: "YOLOv11",
       },
       {
-        num: 3,
-        title: "Severity Classification",
-        detail: "Cracks: min(bbox_w, bbox_h) × mm_per_pixel → Low < 1.5 mm, Medium 1.5–6 mm, High > 6 mm. Other defects: bbox area → Low < 5,000 px², Medium 5,000–25,000 px², High > 25,000 px².",
-        tag: "severity",
-      },
-      {
-        num: 4,
+        num: 2,
         title: "Annotation & Storage",
-        detail: "YOLO draws bounding boxes with class labels onto the image and saves it to annotated/. Detection records (class, confidence, severity, coordinates, crack_width_mm) are written to metadata.json.",
+        detail: "YOLO draws bounding boxes with class labels onto the image and saves it to annotated/. Detection records (class, confidence, coordinates) are written to metadata.json.",
       },
     ],
     videoPipeline: [
@@ -206,24 +189,12 @@ const stages: Stage[] = [
       },
       {
         num: 2,
-        title: "ArUco Calibration Lock",
-        detail: "Calibration attempted once on the first frame. If Tier 1 (ArUco marker) is found, the resulting mm/pixel ratio is locked for all subsequent frames. Otherwise falls back to per-frame Tier 2/3.",
-        tag: "calibration",
-      },
-      {
-        num: 3,
         title: "YOLOv11 Frame Streaming",
         detail: "YOLO streams every frame sequentially. A fully annotated output video is written to annotated/. Frames containing at least one detection are collected for deduplication.",
         tag: "YOLOv11",
       },
       {
-        num: 4,
-        title: "Severity & Location Classification",
-        detail: "For each detected frame: calibration tier resolved, severity computed (same thresholds as image path), and a GPS location inferred from the bounding box center position + SRT telemetry.",
-        tag: "severity",
-      },
-      {
-        num: 5,
+        num: 3,
         title: "Cross-Frame Deduplication",
         detail: "Detections grouped by class, sorted by confidence (desc). A detection survives only if its bounding box does not overlap (IoU > 0.4) with any already-kept detection of the same class — eliminating repeated sightings of the same physical defect across consecutive frames.",
         tag: "IoU > 0.4",

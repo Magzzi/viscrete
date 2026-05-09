@@ -28,26 +28,6 @@ import {
   ImageIcon,
 } from "lucide-react";
 
-// ─── Types / Helpers ──────────────────────────────────────────────────────────
-
-type Severity = "Low" | "Medium" | "High";
-
-function severityBadge(s: Severity | undefined) {
-  if (!s) return null;
-  const cls = {
-    Low: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-    Medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-    High: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  }[s];
-  return (
-    <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-bold", cls)}>{s}</span>
-  );
-}
-
-function countSeverity(detections: Detection[], sev: Severity) {
-  return detections.filter(d => d.severity === sev).length;
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DetectPage() {
@@ -119,9 +99,6 @@ export default function DetectPage() {
   const allDetections: Detection[] = result?.detections ?? [];
 
   const totalDefects = result?.total_defects ?? 0;
-  const lowCount = countSeverity(allDetections, "Low");
-  const midCount = countSeverity(allDetections, "Medium");
-  const highCount = countSeverity(allDetections, "High");
 
   const annotatedPaths: string[] = result?.annotated_paths ?? [];
 
@@ -233,12 +210,6 @@ export default function DetectPage() {
                   <span className="font-medium text-gray-700 dark:text-gray-300">
                     {totalDefects} defect{totalDefects !== 1 ? "s" : ""} detected
                   </span>
-                  <span className="text-gray-300 dark:text-gray-600">•</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">{lowCount} Low</span>
-                  <span className="text-gray-300 dark:text-gray-600">•</span>
-                  <span className="text-amber-600 dark:text-amber-400 font-medium">{midCount} Medium</span>
-                  <span className="text-gray-300 dark:text-gray-600">•</span>
-                  <span className="text-red-500 dark:text-red-400 font-medium">{highCount} High</span>
                 </div>
               </div>
 
@@ -255,9 +226,6 @@ export default function DetectPage() {
                         <tr className="border-b border-gray-100 dark:border-gray-800">
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Defect Type</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Confidence</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Severity</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Crack Width</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Area</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -270,13 +238,6 @@ export default function DetectPage() {
                               <span className="text-gray-800 dark:text-gray-200 font-medium capitalize">{d.defect_type}</span>
                             </td>
                             <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{Math.round(d.confidence * 100)}%</td>
-                            <td className="px-4 py-3">{severityBadge(d.severity)}</td>
-                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                              {d.crack_width_mm != null ? `${d.crack_width_mm.toFixed(1)} mm` : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                              {d.area_px != null ? `${d.area_px.toLocaleString()} px²` : "—"}
-                            </td>
                           </tr>
                         ))}
                       </tbody>
