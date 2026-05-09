@@ -476,6 +476,28 @@ export default function ResultPage() {
     if (currentImageSrc) setImageLoading(true);
   }, [currentImageSrc]);
 
+  // Prefetch the next and previous images so navigation feels instant
+  useEffect(() => {
+    if (totalImages < 2) return;
+    const paths = isVideoJob ? annotatedPaths : imageAnnotatedPaths;
+    const indices = [
+      (currentImageIndex + 1) % totalImages,
+      (currentImageIndex - 1 + totalImages) % totalImages,
+    ];
+    for (const idx of indices) {
+      const path = paths[idx];
+      if (!path) continue;
+      const src = `${API_BASE_URL}/static/${
+        isVideoJob
+          ? path
+          : path.replace('/annotated/', '/processed/').replace(/_annotated(\.[^.]+)$/, '$1')
+      }`;
+      const img = new Image();
+      img.src = src;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentImageIndex, totalImages]);
+
   // ResizeObserver — fires after every layout change to the img element
   // (window.resize misses flex-layout reflows and gives stale dimensions)
   useEffect(() => {
@@ -853,6 +875,8 @@ export default function ResultPage() {
                       key={currentImageSrc}
                       src={currentImageSrc}
                       alt={`Detection Result ${currentImageIndex + 1}`}
+                      decoding="async"
+                      fetchPriority="high"
                       className={cn("w-full h-full object-contain transition-opacity", imageLoading ? "opacity-0" : "opacity-100")}
                       onLoad={handleImageLoad}
                     />

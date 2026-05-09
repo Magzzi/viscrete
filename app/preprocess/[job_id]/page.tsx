@@ -237,6 +237,7 @@ function BeforeAfterToggle({
         <img
           src={original}
           alt="Original"
+          decoding="async"
           className={cn(
             "absolute inset-0 w-full h-full object-contain transition-opacity duration-300",
             showProcessed ? "opacity-0" : "opacity-100"
@@ -247,6 +248,7 @@ function BeforeAfterToggle({
         <img
           src={processed}
           alt="Processed"
+          decoding="async"
           className={cn(
             "absolute inset-0 w-full h-full object-contain transition-opacity duration-300",
             showProcessed ? "opacity-100" : "opacity-0"
