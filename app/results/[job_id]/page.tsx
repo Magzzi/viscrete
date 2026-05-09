@@ -168,6 +168,15 @@ export default function ResultPage() {
   type FileGpsEntry = { filename: string; gps_latitude: number | null; gps_longitude: number | null; location_label: string | null };
   const [fileGpsMap, setFileGpsMap] = useState<Record<string, FileGpsEntry>>({});
 
+  // Auto-reload once on non-fatal errors (model likely just finished)
+  useEffect(() => {
+    if (!error || error.includes("not found")) return;
+    const key = `viscrete_reloaded_${jobId}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    window.location.reload();
+  }, [error, jobId]);
+
   // ── Init: check job status, then run detection ──────────────────────────────
 
   useEffect(() => {
@@ -669,11 +678,6 @@ export default function ResultPage() {
                 {error.includes("not found") && (
                   <button onClick={() => router.push("/upload")} className="text-sm text-red-400 underline">
                     ← Back to Upload
-                  </button>
-                )}
-                {!error.includes("not found") && (
-                  <button onClick={runDetection} className="text-sm text-red-400 underline">
-                    Retry Detection
                   </button>
                 )}
               </div>
