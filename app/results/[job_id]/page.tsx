@@ -136,6 +136,7 @@ export default function ResultPage() {
   const [imageLoading, setImageLoading] = useState(false);
 
   const [fileIdToCarouselIndex, setFileIdToCarouselIndex] = useState<Record<string, number>>({});
+  const [carouselIndexToProcessedPath, setCarouselIndexToProcessedPath] = useState<Record<number, string>>({});
   const [highlightedDetection, setHighlightedDetection] = useState<Detection | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -200,8 +201,9 @@ export default function ResultPage() {
           if (Array.isArray(job.files)) {
             const gpsMap: Record<string, FileGpsEntry> = {};
             const indexMap: Record<string, number> = {};
+            const processedPathMap: Record<number, string> = {};
             let carouselIdx = 0;
-            for (const f of job.files as Array<{ file_id: string; filename?: string; gps_latitude?: number; gps_longitude?: number; location_label?: string }>) {
+            for (const f of job.files as Array<{ file_id: string; filename?: string; processed_path?: string | null; gps_latitude?: number; gps_longitude?: number; location_label?: string }>) {
               gpsMap[f.file_id] = {
                 filename: f.filename ?? f.file_id,
                 gps_latitude: f.gps_latitude ?? null,
@@ -209,11 +211,14 @@ export default function ResultPage() {
                 location_label: f.location_label ?? null,
               };
               if (!isVideoPath(f.filename ?? '')) {
-                indexMap[f.file_id] = carouselIdx++;
+                const idx = carouselIdx++;
+                indexMap[f.file_id] = idx;
+                if (f.processed_path) processedPathMap[idx] = f.processed_path;
               }
             }
             setFileGpsMap(gpsMap);
             setFileIdToCarouselIndex(indexMap);
+            setCarouselIndexToProcessedPath(processedPathMap);
           }
           // Detect video job from uploaded filenames
           if (Array.isArray(job.files) && job.files.some((f: { filename: string }) => isVideoPath(f.filename))) {
@@ -459,15 +464,19 @@ export default function ResultPage() {
     : imageAnnotatedPaths[currentImageIndex];
 
   // Video: show the annotated snapshot directly (backend burned boxes in).
-  // Image: show the preprocessed image so frontend overlays render on a clean base.
+  // Image: use processed_path from job status (exact extension); fall back to
+  // string-derived path only when the map hasn't populated yet.
   const currentImageSrc = currentAnnotatedPath
-    ? `${API_BASE_URL}/static/${
-        isVideoJob
-          ? currentAnnotatedPath
-          : currentAnnotatedPath
-              .replace('/annotated/', '/processed/')
-              .replace(/_annotated(\.[^.]+)$/, '$1')
-      }${isVideoJob ? '' : '?w=1280'}`
+    ? (() => {
+        if (isVideoJob) return `${API_BASE_URL}/static/${currentAnnotatedPath}`;
+        const processedPath = carouselIndexToProcessedPath[currentImageIndex];
+        if (processedPath) return `${API_BASE_URL}/static/${processedPath}?w=1280`;
+        return `${API_BASE_URL}/static/${
+          currentAnnotatedPath
+            .replace('/annotated/', '/processed/')
+            .replace(/_annotated(\.[^.]+)$/, '$1')
+        }?w=1280`;
+      })()
     : null;
 
   // Reset dimensions and mark loading when the displayed image changes
@@ -487,11 +496,15 @@ export default function ResultPage() {
     for (const idx of indices) {
       const path = paths[idx];
       if (!path) continue;
-      const src = `${API_BASE_URL}/static/${
-        isVideoJob
-          ? path
-          : path.replace('/annotated/', '/processed/').replace(/_annotated(\.[^.]+)$/, '$1')
-      }${isVideoJob ? '' : '?w=1280'}`;
+      let src: string;
+      if (isVideoJob) {
+        src = `${API_BASE_URL}/static/${path}`;
+      } else {
+        const processedPath = carouselIndexToProcessedPath[idx];
+        src = processedPath
+          ? `${API_BASE_URL}/static/${processedPath}?w=1280`
+          : `${API_BASE_URL}/static/${path.replace('/annotated/', '/processed/').replace(/_annotated(\.[^.]+)$/, '$1')}?w=1280`;
+      }
       const img = new Image();
       img.src = src;
     }
