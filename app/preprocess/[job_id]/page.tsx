@@ -1322,12 +1322,12 @@ export default function PreprocessPage() {
         const cii = ciiByFileId.get(f.file_id) ?? null;
         return {
           label: f.filename,
-          original: `${API_BASE_URL}/static/${encodeURIComponent(
-            job_id
-          )}/original/${storedName}?w=1280`,
-          processed: `${API_BASE_URL}/static/${encodeURIComponent(
-            job_id
-          )}/processed/${storedName}?w=1280`,
+          original: f.original_path
+            ? `${API_BASE_URL}/static/${f.original_path}?w=1280`
+            : `${API_BASE_URL}/static/${encodeURIComponent(job_id)}/original/${storedName}?w=1280`,
+          processed: f.processed_path
+            ? `${API_BASE_URL}/static/${f.processed_path}?w=1280`
+            : `${API_BASE_URL}/static/${encodeURIComponent(job_id)}/processed/${storedName}?w=1280`,
           ciiScore: cii?.cii_score ?? null,
           originalContrast: cii?.original_contrast ?? null,
           processedContrast: cii?.processed_contrast ?? null,
