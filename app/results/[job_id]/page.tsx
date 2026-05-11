@@ -134,6 +134,10 @@ export default function ResultPage() {
   };
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0, naturalWidth: 0, naturalHeight: 0 });
   const [imageLoading, setImageLoading] = useState(false);
+  // Original (full-res) dimensions of the current image — loaded in background
+  // so bbox coordinates (which are in original pixel space) scale correctly
+  // even when the display image is served at ?w=1280.
+  const [origSize, setOrigSize] = useState<{ w: number; h: number } | null>(null);
 
   const [fileIdToCarouselIndex, setFileIdToCarouselIndex] = useState<Record<string, number>>({});
   const [carouselIndexToProcessedPath, setCarouselIndexToProcessedPath] = useState<Record<number, string>>({});
@@ -530,6 +534,17 @@ export default function ResultPage() {
     return () => ro.disconnect();
   }, [currentImageSrc]);
 
+  // Load original (full-res) dimensions in background so overlay scale factors
+  // use the original coordinate space, not the downscaled ?w=1280 dimensions.
+  useEffect(() => {
+    if (!currentImageSrc || isVideoJob) { setOrigSize(null); return; }
+    setOrigSize(null);
+    const fullResUrl = currentImageSrc.replace(/\?w=\d+$/, '');
+    const img = new Image();
+    img.onload = () => setOrigSize({ w: img.naturalWidth, h: img.naturalHeight });
+    img.src = fullResUrl;
+  }, [currentImageSrc, isVideoJob]);
+
   // Resolve the file_id of whichever image is currently shown (image jobs only)
   const currentFileId = imageAnnotatedPaths.length === 1
     ? flatData?.file_id
@@ -559,19 +574,23 @@ export default function ResultPage() {
   // With object-contain, the img CSS box may be larger than the rendered content.
   // We need the rendered rect to position overlays correctly.
   const { width: cssW, height: cssH, naturalWidth, naturalHeight } = imageDimensions;
-  const hasValidDimensions = cssW > 0 && cssH > 0 && naturalWidth > 0 && naturalHeight > 0;
-  const naturalAspect = hasValidDimensions ? naturalWidth / naturalHeight : 1;
-  const cssAspect = hasValidDimensions ? cssW / cssH : 1;
-  const renderedW = hasValidDimensions
+  const hasValidLayout = cssW > 0 && cssH > 0 && naturalWidth > 0 && naturalHeight > 0;
+  // Overlays additionally require origSize so bbox coords (original pixel space)
+  // scale correctly even when the display image is downscaled via ?w=.
+  const hasValidDimensions = hasValidLayout && !!origSize;
+  const naturalAspect = hasValidLayout ? naturalWidth / naturalHeight : 1;
+  const cssAspect = hasValidLayout ? cssW / cssH : 1;
+  const renderedW = hasValidLayout
     ? (naturalAspect > cssAspect ? cssW : cssH * naturalAspect)
     : 0;
-  const renderedH = hasValidDimensions
+  const renderedH = hasValidLayout
     ? (naturalAspect > cssAspect ? cssW / naturalAspect : cssH)
     : 0;
   const offsetX = (cssW - renderedW) / 2;
   const offsetY = (cssH - renderedH) / 2;
-  const scaleX = renderedW > 0 ? renderedW / naturalWidth : 0;
-  const scaleY = renderedH > 0 ? renderedH / naturalHeight : 0;
+  // Use original (full-res) dims for scale so bbox coords map to original pixel space.
+  const scaleX = renderedW > 0 && origSize ? renderedW / origSize.w : 0;
+  const scaleY = renderedH > 0 && origSize ? renderedH / origSize.h : 0;
 
   // ── All detections (flat) for the defect table ──────────────────────────────
   const allDetections: Detection[] = flatDetections;
@@ -906,11 +925,11 @@ export default function ResultPage() {
                           const { x1, y1, x2, y2 } = bounding_box;
 
                           // Clamp coords to image bounds — backend may return values
-                          // slightly outside [0, natural] due to model padding.
-                          const cx1 = Math.max(0, Math.min(x1, naturalWidth));
-                          const cy1 = Math.max(0, Math.min(y1, naturalHeight));
-                          const cx2 = Math.max(0, Math.min(x2, naturalWidth));
-                          const cy2 = Math.max(0, Math.min(y2, naturalHeight));
+                          // slightly outside [0, original] due to model padding.
+                          const cx1 = Math.max(0, Math.min(x1, origSize!.w));
+                          const cy1 = Math.max(0, Math.min(y1, origSize!.h));
+                          const cx2 = Math.max(0, Math.min(x2, origSize!.w));
+                          const cy2 = Math.max(0, Math.min(y2, origSize!.h));
 
                           const left   = cx1 * scaleX;
                           const top    = cy1 * scaleY;
