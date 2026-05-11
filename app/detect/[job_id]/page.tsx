@@ -271,7 +271,7 @@ export default function DetectPage() {
 // ─── Annotated Image Card ─────────────────────────────────────────────────────
 
 function AnnotatedImageCard({ path }: { path: string }) {
-  const src = `${API_BASE_URL}/static/${path}`;
+  const src = `${API_BASE_URL}/static/${path}?w=400`;
   const label = path.split("/").pop() ?? path;
 
   return (

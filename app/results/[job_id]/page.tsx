@@ -467,7 +467,7 @@ export default function ResultPage() {
           : currentAnnotatedPath
               .replace('/annotated/', '/processed/')
               .replace(/_annotated(\.[^.]+)$/, '$1')
-      }`
+      }${isVideoJob ? '' : '?w=1280'}`
     : null;
 
   // Reset dimensions and mark loading when the displayed image changes
@@ -491,7 +491,7 @@ export default function ResultPage() {
         isVideoJob
           ? path
           : path.replace('/annotated/', '/processed/').replace(/_annotated(\.[^.]+)$/, '$1')
-      }`;
+      }${isVideoJob ? '' : '?w=1280'}`;
       const img = new Image();
       img.src = src;
     }

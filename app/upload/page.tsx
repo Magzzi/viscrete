@@ -1059,7 +1059,7 @@ export default function UploadPage() {
 
 function ImagePreviewModal({ result, onClose }: { result: ValidationResult; onClose: () => void }) {
   const isLowQuality = result.laplacian_score < result.blur_threshold;
-  const imageUrl = result.original_path ? `${API_BASE_URL}/static/${result.original_path}` : null;
+  const imageUrl = result.original_path ? `${API_BASE_URL}/static/${result.original_path}?w=1280` : null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };

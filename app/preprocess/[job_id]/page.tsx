@@ -1324,10 +1324,10 @@ export default function PreprocessPage() {
           label: f.filename,
           original: `${API_BASE_URL}/static/${encodeURIComponent(
             job_id
-          )}/original/${storedName}`,
+          )}/original/${storedName}?w=1280`,
           processed: `${API_BASE_URL}/static/${encodeURIComponent(
             job_id
-          )}/processed/${storedName}`,
+          )}/processed/${storedName}?w=1280`,
           ciiScore: cii?.cii_score ?? null,
           originalContrast: cii?.original_contrast ?? null,
           processedContrast: cii?.processed_contrast ?? null,
