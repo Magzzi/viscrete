@@ -291,6 +291,31 @@ export async function getResultImageUrl(jobId: string, imageName: string): Promi
   return URL.createObjectURL(blob);
 }
 
+// ─── Remarks ──────────────────────────────────────────────────────────────────
+
+export interface RemarksResponse {
+  job_id: string;
+  remarks: Record<string, string>;
+}
+
+/** PATCH /api/v1/jobs/{job_id}/remarks — merge remarks keyed by file_id.
+ *  PATCH is additive: sending one file_id preserves all others.
+ *  Send empty string to clear a remark for a specific file. */
+export async function patchRemarks(
+  jobId: string,
+  remarks: Record<string, string>,
+): Promise<RemarksResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/remarks`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remarks }),
+    },
+  );
+  return handleResponse<RemarksResponse>(res);
+}
+
 // ─── Report ───────────────────────────────────────────────────────────────────
 
 /** POST /api/v1/jobs/{job_id}/report — generate PDF report. Pass regenerate=true to overwrite an existing one. */

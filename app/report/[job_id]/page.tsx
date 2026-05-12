@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getJob, generateReport, API_BASE_URL } from "@/lib/api";
-import { ArrowLeft, Loader2, AlertCircle, FileText } from "lucide-react";
-import { ModeToggle } from "@/components/ui/mode-toggle";
+import { Loader2, AlertCircle, FileText } from "lucide-react";
 
 type PageState = "checking" | "detected" | "generating" | "loading-pdf" | "completed" | "error";
 
@@ -76,24 +75,6 @@ export default function ReportPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col">
-      {/* Header */}
-      <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button
-            onClick={() => router.back()}
-            className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-base font-bold text-gray-900 dark:text-white">Inspection Report</h1>
-            <p className="text-xs text-gray-400 font-mono truncate">Job: {job_id}</p>
-          </div>
-          <ModeToggle />
-        </div>
-      </header>
-
       <main className="flex-1 flex flex-col">
         {/* Checking job status */}
         {state === "checking" && (

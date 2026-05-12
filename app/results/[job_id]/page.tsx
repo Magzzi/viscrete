@@ -6,6 +6,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   generateReport,
+  patchRemarks,
   type DetectResponse,
   type Detection,
 } from "@/lib/api";
@@ -91,7 +92,10 @@ export default function ResultPage() {
   const [isVideoJob, setIsVideoJob] = useState(false);
 
   const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Report state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -143,6 +147,12 @@ export default function ResultPage() {
   const [carouselIndexToProcessedPath, setCarouselIndexToProcessedPath] = useState<Record<number, string>>({});
   const [highlightedDetection, setHighlightedDetection] = useState<Detection | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Per-image inspector remarks
+  const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [remarkSaving, setRemarkSaving] = useState(false);
+  const [remarksChangedAfterReport, setRemarksChangedAfterReport] = useState(false);
+  const remarkDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -223,6 +233,10 @@ export default function ResultPage() {
             setFileGpsMap(gpsMap);
             setFileIdToCarouselIndex(indexMap);
             setCarouselIndexToProcessedPath(processedPathMap);
+          }
+          // Load any previously saved remarks
+          if (job.remarks && typeof job.remarks === 'object') {
+            setRemarks(job.remarks as Record<string, string>);
           }
           // Detect video job from uploaded filenames
           if (Array.isArray(job.files) && job.files.some((f: { filename: string }) => isVideoPath(f.filename))) {
@@ -354,12 +368,27 @@ export default function ResultPage() {
     }
   }
 
+  function handleRemarkChange(fileId: string, value: string) {
+    setRemarks(prev => ({ ...prev, [fileId]: value }));
+    if (reportGenerated) setRemarksChangedAfterReport(true);
+    if (remarkDebounceRef.current) clearTimeout(remarkDebounceRef.current);
+    remarkDebounceRef.current = setTimeout(async () => {
+      setRemarkSaving(true);
+      try {
+        await patchRemarks(jobId, { [fileId]: value });
+      } finally {
+        setRemarkSaving(false);
+      }
+    }, 500);
+  }
+
   async function handleRegenerateReport() {
     setReportError(null);
     setIsGenerating(true);
     try {
       await generateReport(jobId, true);
       setReportGenerated(true);
+      setRemarksChangedAfterReport(false);
     } catch (e: unknown) {
       setReportError(e instanceof Error ? e.message : "Failed to regenerate report");
     } finally {
@@ -387,7 +416,7 @@ export default function ResultPage() {
   }
 
   function handleViewPdf() {
-    router.push(`/report/${jobId}`);
+    window.open(`/report/${jobId}`, '_blank', 'noopener,noreferrer');
   }
 
   function handleDownloadCsv() {
@@ -721,8 +750,8 @@ export default function ResultPage() {
         </div>
       )}
 
-      {/* Error */}
-      {error && !isRunning && (
+      {/* Error — only shown when there are no results to display */}
+      {error && !isRunning && !hasRun && (
         <div className="flex flex-col items-center justify-center flex-1 gap-4 bg-gray-100 dark:bg-gray-900 p-8">
           <div className="bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800 rounded-2xl p-6 max-w-md w-full">
             <div className="flex items-start gap-3">
@@ -911,6 +940,7 @@ export default function ResultPage() {
                       fetchPriority="high"
                       className={cn("w-full h-full object-contain transition-opacity", imageLoading ? "opacity-0" : "opacity-100")}
                       onLoad={handleImageLoad}
+                      onError={() => setImageLoading(false)}
                     />
                     {/* Overlay container — positioned at the actual rendered image rect.
                         No overflow-hidden so labels near the top edge aren't clipped. */}
@@ -1018,6 +1048,42 @@ export default function ResultPage() {
                     Next
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
+                </div>
+              )}
+
+              {/* Inspector's Observation — per image, image jobs only */}
+              {!isVideoJob && currentFileId && (
+                <div className="mt-5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                      Inspector&apos;s Observation
+                    </label>
+                    {remarkSaving && (
+                      <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    value={remarks[currentFileId] ?? ''}
+                    onChange={e => handleRemarkChange(currentFileId, e.target.value)}
+                    placeholder="Add observation for this image…"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none"
+                  />
+                  {remarksChangedAfterReport && (
+                    <div className="flex items-center gap-2 mt-2 p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span className="flex-1">Remarks updated after report was generated.</span>
+                      <button
+                        onClick={handleRegenerateReport}
+                        disabled={isGenerating}
+                        className="underline hover:no-underline shrink-0 cursor-pointer disabled:opacity-50"
+                      >
+                        Regenerate
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               </>
