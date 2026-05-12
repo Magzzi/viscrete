@@ -41,6 +41,8 @@ import {
   Square,
   FileText,
   Plus,
+  LayoutList,
+  GalleryHorizontal,
 } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 
@@ -119,6 +121,11 @@ export default function UploadPage() {
   const [blurFilter, setBlurFilter] = useState<"all" | "sharp" | "blurry">("all");
   const [resultsPage, setResultsPage] = useState(1);
 
+  // ── Results view mode
+  const [viewMode, setViewMode] = useState<"list" | "carousel">("list");
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const filteredLengthRef = useRef(0);
+
   // ── Previous jobs
   const [jobs, setJobs] = useState<JobStatusResponse[]>([]);
   const [jobsPage, setJobsPage] = useState(1);
@@ -156,8 +163,22 @@ export default function UploadPage() {
     setUploadError(null);
   }, [mediaType]);
 
-  // Reset results page when filters or results change
-  useEffect(() => { setResultsPage(1); }, [gpsFilter, blurFilter, validationResults]);
+  // Reset results page + carousel index when filters or results change
+  useEffect(() => { setResultsPage(1); setCarouselIndex(0); }, [gpsFilter, blurFilter, validationResults]);
+
+  // Keyboard navigation for carousel mode — reads length from ref so the
+  // effect doesn't depend on filteredResults (computed later in the body).
+  useEffect(() => {
+    if (viewMode !== "carousel") return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "ArrowLeft")  setCarouselIndex(i => Math.max(0, i - 1));
+      if (e.key === "ArrowRight") setCarouselIndex(i => Math.min(filteredLengthRef.current - 1, i + 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewMode]);
 
   // Load previous jobs on mount
   useEffect(() => {
@@ -438,6 +459,8 @@ export default function UploadPage() {
     if (blurFilter === "blurry" && !isLowQuality) return false;
     return true;
   });
+
+  filteredLengthRef.current = filteredResults.length;
 
   // ── Pagination
   const totalPages = Math.max(1, Math.ceil(jobs.length / JOBS_PER_PAGE));
@@ -882,17 +905,18 @@ export default function UploadPage() {
             ) : (
               <div className="space-y-4">
                 {/* Filters + Summary */}
-                <div className="bg-white dark:bg-[#161616] rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
-                  <div className="flex flex-wrap gap-4 mb-4">
-                    {/* GPS filter */}
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mr-2">GPS</span>
+                <div className="bg-white dark:bg-[#161616] rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm space-y-3">
+                  {/* Row 1: GPS + Blur filters + view toggle */}
+                  <div className="flex items-start gap-2">
+                    {/* Filters group — wraps internally on narrow viewports */}
+                    <div className="flex-1 min-w-0 flex items-center flex-wrap gap-2">
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider shrink-0">GPS</span>
                       {(["all", "with", "without"] as const).map(opt => (
                         <button
                           key={opt}
                           onClick={() => setGpsFilter(opt)}
                           className={cn(
-                            "mr-1 px-2.5 py-1 rounded-full text-xs font-medium transition",
+                            "px-2.5 py-1 rounded-full text-xs font-medium transition shrink-0",
                             gpsFilter === opt
                               ? "bg-blue-600 text-white"
                               : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -901,16 +925,14 @@ export default function UploadPage() {
                           {opt === "all" ? "All" : opt === "with" ? "With GPS" : "Without GPS"}
                         </button>
                       ))}
-                    </div>
-                    {/* Blur filter */}
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mr-2">Blur</span>
+                      <span className="w-px h-4 bg-gray-200 dark:bg-gray-700 shrink-0 self-center" />
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider shrink-0">Blur</span>
                       {(["all", "sharp", "blurry"] as const).map(opt => (
                         <button
                           key={opt}
                           onClick={() => setBlurFilter(opt)}
                           className={cn(
-                            "mr-1 px-2.5 py-1 rounded-full text-xs font-medium transition",
+                            "px-2.5 py-1 rounded-full text-xs font-medium transition shrink-0",
                             blurFilter === opt
                               ? "bg-blue-600 text-white"
                               : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -920,9 +942,36 @@ export default function UploadPage() {
                         </button>
                       ))}
                     </div>
+                    {/* View toggle — always anchored to the right */}
+                    <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 shrink-0">
+                      <button
+                        onClick={() => setViewMode("list")}
+                        title="List view"
+                        className={cn(
+                          "p-1.5 rounded-md transition cursor-pointer",
+                          viewMode === "list"
+                            ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+                            : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                        )}
+                      >
+                        <LayoutList className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setViewMode("carousel")}
+                        title="Carousel view"
+                        className={cn(
+                          "p-1.5 rounded-md transition cursor-pointer",
+                          viewMode === "carousel"
+                            ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+                            : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                        )}
+                      >
+                        <GalleryHorizontal className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Summary */}
+                  {/* Row 2: Summary */}
                   <div className="text-sm text-gray-600 dark:text-gray-300 flex flex-wrap gap-3">
                     <span className="font-medium">{validationResults!.length} files uploaded</span>
                     <span className="text-gray-300 dark:text-gray-600">•</span>
@@ -986,10 +1035,34 @@ export default function UploadPage() {
                   </div>
                 )}
 
-                {/* File cards */}
+                {/* File cards — list or carousel */}
                 {filteredResults.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center py-8">No files match the current filters.</p>
-                ) : (
+                ) : viewMode === "carousel" ? (() => {
+                  const r = filteredResults[Math.min(carouselIndex, filteredResults.length - 1)];
+                  const hasCoords = r.gps_data?.latitude != null || r.gps != null;
+                  const isNoGps = !hasCoords && !r.location_label;
+                  const displayCoords: { lat: number; lng: number } | null =
+                    r.gps_data?.latitude != null
+                      ? { lat: r.gps_data.latitude!, lng: r.gps_data.longitude! }
+                      : r.gps ? { lat: r.gps.lat, lng: r.gps.lng }
+                      : null;
+                  return (
+                    <CarouselResultView
+                      result={r}
+                      index={Math.min(carouselIndex, filteredResults.length - 1)}
+                      total={filteredResults.length}
+                      isNoGps={isNoGps}
+                      isSelected={selectedFilenames.has(r.filename)}
+                      displayCoords={displayCoords}
+                      locationLabel={r.location_label ?? null}
+                      onPrev={() => setCarouselIndex(i => Math.max(0, i - 1))}
+                      onNext={() => setCarouselIndex(i => Math.min(filteredResults.length - 1, i + 1))}
+                      onToggleSelect={isNoGps ? () => toggleSelectFilename(r.filename) : undefined}
+                      onSetLocation={isNoGps ? () => { setModalCtx(r.filename); setSaveError(null); setSaveSuccess(null); } : undefined}
+                    />
+                  );
+                })() : (
                   <>
                     <div className="space-y-1.5 max-h-[560px] overflow-y-auto pr-1">
                       {pagedResults.map((r, i) => {
@@ -1254,6 +1327,198 @@ function FileResultCard({
           {result.reason}
         </p>
       )}
+    </div>
+  );
+}
+
+// ─── CarouselResultView ───────────────────────────────────────────────────────
+
+function CarouselResultView({
+  result,
+  index,
+  total,
+  isNoGps,
+  isSelected,
+  displayCoords,
+  locationLabel,
+  onPrev,
+  onNext,
+  onToggleSelect,
+  onSetLocation,
+}: {
+  result: ValidationResult;
+  index: number;
+  total: number;
+  isNoGps: boolean;
+  isSelected: boolean;
+  displayCoords: { lat: number; lng: number } | null;
+  locationLabel: string | null;
+  onPrev: () => void;
+  onNext: () => void;
+  onToggleSelect?: () => void;
+  onSetLocation?: () => void;
+}) {
+  const [imgLoading, setImgLoading] = useState(true);
+  const imageUrl = result.original_path
+    ? `${API_BASE_URL}/static/${result.original_path}?w=1280`
+    : null;
+
+  useEffect(() => { setImgLoading(true); }, [imageUrl]);
+
+  const isLowQuality = result.laplacian_score < result.blur_threshold;
+  const sharpnessPct = Math.min(100, (result.laplacian_score / Math.max(result.blur_threshold, 1)) * 100);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Image */}
+      <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden relative">
+        {imageUrl ? (
+          <>
+            {imgLoading && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+              </div>
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              key={imageUrl}
+              src={imageUrl}
+              alt={result.filename}
+              className={cn("w-full h-full object-contain transition-opacity duration-200", imgLoading ? "opacity-0" : "opacity-100")}
+              onLoad={() => setImgLoading(false)}
+              onError={() => setImgLoading(false)}
+            />
+          </>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-gray-600">
+            <FileImage className="w-12 h-12" />
+            <span className="text-xs">No preview available</span>
+          </div>
+        )}
+      </div>
+
+      {/* Info card */}
+      <div className={cn(
+        "bg-white dark:bg-[#161616] rounded-xl border p-4 space-y-3",
+        result.is_valid
+          ? "border-emerald-200 dark:border-emerald-900/60"
+          : "border-red-200 dark:border-red-900/60"
+      )}>
+        {/* Top row: status + quality badges */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={cn(
+            "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold",
+            result.is_valid
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+              : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+          )}>
+            {result.is_valid
+              ? <CheckCircle2 className="w-3 h-3" />
+              : <XCircle className="w-3 h-3" />}
+            {result.is_valid ? "Valid" : "Invalid"}
+          </span>
+          <span className={cn(
+            "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold",
+            isLowQuality
+              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+          )}>
+            {isLowQuality && <AlertTriangle className="w-3 h-3" />}
+            {isLowQuality ? "Low Quality" : "High Quality"}
+          </span>
+          {isNoGps && onToggleSelect && (
+            <button
+              onClick={onToggleSelect}
+              className="ml-auto flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition cursor-pointer"
+            >
+              {isSelected
+                ? <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
+                : <Square className="w-3.5 h-3.5" />}
+              Select
+            </button>
+          )}
+        </div>
+
+        {/* Filename */}
+        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate" title={result.filename}>
+          {result.filename}
+        </p>
+
+        {/* Sharpness bar */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Sharpness</span>
+            <span className="text-xs font-mono text-gray-600 dark:text-gray-300">
+              {result.laplacian_score.toFixed(1)}
+              <span className="text-gray-400 dark:text-gray-600"> / {result.blur_threshold.toFixed(1)}</span>
+            </span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all", isLowQuality ? "bg-amber-400" : "bg-emerald-500")}
+              style={{ width: `${sharpnessPct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* GPS / location */}
+        <div className="flex items-center gap-2">
+          {isNoGps ? (
+            <>
+              <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                <MapPinOff className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                No GPS data
+              </span>
+              {onSetLocation && (
+                <button
+                  onClick={onSetLocation}
+                  className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer"
+                >
+                  <Map className="w-3 h-3" /> Set Location
+                </button>
+              )}
+            </>
+          ) : displayCoords ? (
+            <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+              <MapPin className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              {displayCoords.lat.toFixed(5)}, {displayCoords.lng.toFixed(5)}
+            </span>
+          ) : locationLabel ? (
+            <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+              <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              {locationLabel}
+            </span>
+          ) : null}
+        </div>
+
+        {/* Reason if invalid */}
+        {!result.is_valid && result.reason && (
+          <p className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-3 py-2">
+            {result.reason}
+          </p>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onPrev}
+          disabled={index === 0}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#161616] text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+        >
+          <ChevronLeft className="w-4 h-4" /> Previous
+        </button>
+        <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+          {index + 1} <span className="text-gray-300 dark:text-gray-700">/</span> {total}
+        </span>
+        <button
+          onClick={onNext}
+          disabled={index === total - 1}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#161616] text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+        >
+          Next <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }

@@ -771,11 +771,11 @@ export default function ResultPage() {
 
       {/* CONTENT */}
       {hasRun && detectData && (
-        <div className="flex flex-1">
+        <div className="flex flex-1 flex-col lg:flex-row">
           {/* Main Image Viewer */}
-          <div className="flex-1 bg-gray-100 dark:bg-gray-900 flex flex-col">
+          <div className="flex-1 min-w-0 bg-gray-100 dark:bg-gray-900 flex flex-col">
             {/* Overlay Controls */}
-            <div className="flex justify-center pt-6 px-8">
+            <div className="flex justify-center pt-4 md:pt-6 px-4 md:px-8">
               <div className="bg-white/90 backdrop-blur-sm border border-gray-200 dark:bg-gray-950/90 dark:border-gray-700 rounded-lg px-6 py-3 flex flex-col gap-3">
 
                 {/* Video / Images toggle — shown only for video jobs */}
@@ -814,8 +814,8 @@ export default function ResultPage() {
                 {/* Overlay toggles + class pills — hidden for video jobs */}
                 {!isVideoJob && viewMode === "images" && (
                 <>
-                <div className="flex items-center gap-6">
-                  <span className="text-gray-500 dark:text-gray-400 text-sm uppercase tracking-wider">Overlays</span>
+                <div className="flex items-center flex-wrap gap-x-6 gap-y-2">
+                  <span className="text-gray-500 dark:text-gray-400 text-sm uppercase tracking-wider shrink-0">Overlays</span>
 
                   {/* Bounding Boxes Toggle */}
                   <button
@@ -852,7 +852,7 @@ export default function ResultPage() {
                 </div>
 
                 {/* Row 2 — per-class toggles */}
-                <div className="flex items-center gap-2 border-t border-gray-200 dark:border-gray-700 pt-3">
+                <div className="flex items-center gap-2 flex-wrap border-t border-gray-200 dark:border-gray-700 pt-3">
                   <span className="text-gray-500 dark:text-gray-500 text-xs uppercase tracking-wider mr-2">Classes</span>
                   {allDefectClasses.map(cls => {
                     const active = visibleDefects.has(cls);
@@ -883,19 +883,19 @@ export default function ResultPage() {
             </div>
 
             {/* Image Carousel / Video Player */}
-            <div ref={carouselRef} className="flex-1 flex flex-col p-8 min-h-0">
+            <div ref={carouselRef} className="flex-1 flex flex-col p-4 md:p-8 min-h-0">
 
               {/* ── Video player ─────────────────────────────────────────────── */}
               {viewMode === "video" && isVideoJob && (
                 <>
-                  <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-3 flex items-center justify-center" style={{ height: '480px' }}>
+                  <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-3 flex items-center justify-center" style={{ height: 'clamp(280px, 50vh, 480px)' }}>
                     {annotatedVideoPath ? (
                       <video
                         key={annotatedVideoPath}
                         src={`${API_BASE_URL}/static/${annotatedVideoPath}`}
                         controls
                         className="max-w-full max-h-full rounded"
-                        style={{ maxHeight: '464px' }}
+                        style={{ maxHeight: 'clamp(264px, calc(50vh - 16px), 464px)' }}
                       />
                     ) : (
                       <div className="flex flex-col items-center gap-3 text-gray-400 dark:text-gray-600">
@@ -915,7 +915,7 @@ export default function ResultPage() {
               {/* ── Image carousel ───────────────────────────────────────────── */}
               {viewMode === "images" && (
               <>
-              <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 p-8" style={{ height: '480px' }}>
+              <div className="bg-gray-200/40 border-2 border-dashed border-gray-300 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-lg mb-4 p-8" style={{ height: 'clamp(280px, 50vh, 480px)' }}>
                 {!currentImageSrc ? (
                   <div className="w-full h-full flex flex-col items-center justify-center">
                     <ImageIcon className="w-16 h-16 text-gray-400 dark:text-gray-600 mb-4" />
@@ -1296,7 +1296,7 @@ export default function ResultPage() {
           </div>
 
           {/* Right Sidebar */}
-          <div className="w-96 bg-white border-l border-gray-200 dark:bg-gray-950 dark:border-gray-800 p-6 overflow-y-auto">
+          <div className="lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 dark:bg-gray-950 dark:border-gray-800 p-6 overflow-y-auto">
             {/* Defect Type Cards Grid */}
             <div className="grid grid-cols-2 gap-3 mb-6">
               <div className="bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50 rounded-lg p-4">
