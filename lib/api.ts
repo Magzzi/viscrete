@@ -17,9 +17,11 @@ export interface JobStatusResponse {
   status: string;
   input_type: string;
   site_name?: string;
+  site_location?: string; // backend may return either field name
   inspector_name?: string;
   file_count?: number;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface ValidationResult {

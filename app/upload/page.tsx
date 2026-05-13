@@ -47,6 +47,7 @@ import {
   GalleryHorizontal,
   RefreshCw,
   ShieldCheck,
+  User,
 } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 
@@ -58,6 +59,12 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return (bytes / Math.pow(k, i)).toFixed(1) + " " + sizes[i];
+}
+
+function toInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return name;
+  return words.map(w => w[0].toUpperCase()).join('');
 }
 
 function formatDate(iso?: string): string {
@@ -139,6 +146,8 @@ export default function UploadPage() {
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+  const [jobSearch, setJobSearch] = useState("");
+  const [jobSort, setJobSort] = useState<"date_desc" | "date_asc" | "site_asc" | "site_desc" | "inspector_asc" | "inspector_desc">("date_desc");
 
   // ── Image preview modal — store filename so we always look up the live record
   const [previewFilename, setPreviewFilename] = useState<string | null>(null);
@@ -169,6 +178,8 @@ export default function UploadPage() {
 
   // Reset results page + carousel index when filters or results change
   useEffect(() => { setResultsPage(1); setCarouselIndex(0); }, [gpsFilter, blurFilter, validationResults]);
+  // Reset jobs page when search/sort changes
+  useEffect(() => { setJobsPage(1); }, [jobSearch, jobSort]);
 
   // Keyboard navigation for carousel mode — reads length from ref so the
   // effect doesn't depend on filteredResults (computed later in the body).
@@ -209,6 +220,7 @@ export default function UploadPage() {
     try {
       await deleteJob(jobId);
       setJobs(prev => prev.filter(j => j.job_id !== jobId));
+      setSelectedJobIds(prev => { const n = new Set(prev); n.delete(jobId); return n; });
       // Clamp page if needed after removal
       setJobsPage(prev => {
         const remaining = jobs.length - 1;
@@ -232,10 +244,10 @@ export default function UploadPage() {
   }
 
   function toggleSelectAll() {
-    if (selectedJobIds.size === jobs.length) {
+    if (selectedJobIds.size === filteredSortedJobs.length) {
       setSelectedJobIds(new Set());
     } else {
-      setSelectedJobIds(new Set(jobs.map(j => j.job_id)));
+      setSelectedJobIds(new Set(filteredSortedJobs.map(j => j.job_id)));
     }
   }
 
@@ -497,9 +509,30 @@ export default function UploadPage() {
 
   filteredLengthRef.current = filteredResults.length;
 
+  // ── Jobs filter + sort
+  const getSite = (j: JobStatusResponse) => j.site_name ?? j.site_location ?? "";
+
+  const filteredSortedJobs = jobs
+    .filter(j => {
+      if (!jobSearch.trim()) return true;
+      const q = jobSearch.trim().toLowerCase();
+      return getSite(j).toLowerCase().includes(q) ||
+             (j.inspector_name ?? "").toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      switch (jobSort) {
+        case "date_asc":  return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+        case "site_asc":  return getSite(a).localeCompare(getSite(b));
+        case "site_desc": return getSite(b).localeCompare(getSite(a));
+        case "inspector_asc":  return (a.inspector_name ?? "").localeCompare(b.inspector_name ?? "");
+        case "inspector_desc": return (b.inspector_name ?? "").localeCompare(a.inspector_name ?? "");
+        default: return (b.created_at ?? "").localeCompare(a.created_at ?? ""); // date_desc
+      }
+    });
+
   // ── Pagination
-  const totalPages = Math.max(1, Math.ceil(jobs.length / JOBS_PER_PAGE));
-  const pagedJobs = jobs.slice((jobsPage - 1) * JOBS_PER_PAGE, jobsPage * JOBS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(filteredSortedJobs.length / JOBS_PER_PAGE));
+  const pagedJobs = filteredSortedJobs.slice((jobsPage - 1) * JOBS_PER_PAGE, jobsPage * JOBS_PER_PAGE);
 
   const highQualityCount = validationResults?.filter(r => r.laplacian_score >= r.blur_threshold).length ?? 0;
   const lowQualityCount = (validationResults?.length ?? 0) - highQualityCount;
@@ -509,7 +542,7 @@ export default function UploadPage() {
   const pagedResults = filteredResults.slice((resultsPage - 1) * RESULTS_PER_PAGE, resultsPage * RESULTS_PER_PAGE);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a]">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Toast */}
       {toast && (
         <div className={cn(
@@ -565,25 +598,27 @@ export default function UploadPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 pt-20">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">New Inspection Job</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Fill in job details, upload files, and validate before preprocessing.</p>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 pb-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">New Inspection Job</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Complete each step below to start the inspection pipeline.</p>
         </div>
 
-        {/* Two-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 items-start">
 
-          {/* ── LEFT COLUMN ─────────────────────────────────────────── */}
-          <div className="space-y-6">
+          {/* ── LEFT COLUMN ── */}
+          <div className="flex flex-col gap-4">
 
-            {/* Job Details Card */}
-            <div className="bg-white dark:bg-[#161616] rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Job Details</h3>
+            {/* Step 1 — Job Details */}
+            <div className="bg-white dark:bg-[#161616] rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold shrink-0">1</span>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Job Details</h3>
+              </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
-                  <label htmlFor="siteName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  <label htmlFor="siteName" className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Site Name <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -597,7 +632,7 @@ export default function UploadPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="inspectorName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  <label htmlFor="inspectorName" className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Inspector Name <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -611,7 +646,7 @@ export default function UploadPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Media Type <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-3">
@@ -639,9 +674,12 @@ export default function UploadPage() {
               </div>
             </div>
 
-            {/* Upload Area Card */}
-            <div className="bg-white dark:bg-[#161616] rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Upload Files</h3>
+            {/* Step 2 — Upload & Validate */}
+            <div className="bg-white dark:bg-[#161616] rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold shrink-0">2</span>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Upload & Validate</h3>
+              </div>
 
               {/* Drop Zone */}
               <div
@@ -651,7 +689,7 @@ export default function UploadPage() {
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
                 className={cn(
-                  "border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all",
+                  "border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all",
                   isDragging
                     ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
                     : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-gray-50 dark:bg-gray-900/50"
@@ -750,7 +788,7 @@ export default function UploadPage() {
               )}
 
               {/* Upload + Proceed buttons */}
-              <div className="mt-5 flex gap-3">
+              <div className="mt-4 flex gap-3">
                 <button
                   id="btn-upload"
                   onClick={handleUpload}
@@ -782,9 +820,9 @@ export default function UploadPage() {
               </div>
             </div>
 
-            {/* ── Previous Jobs ──────────────────────────────────────── */}
-            <div className="bg-white dark:bg-[#161616] rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
+            {/* Previous Jobs — utility section, no step number */}
+            <div className="bg-white dark:bg-[#161616] rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm order-last lg:order-none">
+              <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Previous Jobs</h3>
                 <div className="flex items-center gap-3">
                   {selectedJobIds.size > 0 && (
@@ -802,6 +840,31 @@ export default function UploadPage() {
                 </div>
               </div>
 
+              {/* Search + Sort controls */}
+              {!jobsLoading && !jobsError && jobs.length > 0 && (
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    type="text"
+                    placeholder="Search site or inspector…"
+                    value={jobSearch}
+                    onChange={e => setJobSearch(e.target.value)}
+                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  />
+                  <select
+                    value={jobSort}
+                    onChange={e => setJobSort(e.target.value as typeof jobSort)}
+                    className="shrink-0 px-2 py-1.5 rounded-lg text-xs border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition cursor-pointer"
+                  >
+                    <option value="date_desc">Newest first</option>
+                    <option value="date_asc">Oldest first</option>
+                    <option value="site_asc">Site A → Z</option>
+                    <option value="site_desc">Site Z → A</option>
+                    <option value="inspector_asc">Inspector A → Z</option>
+                    <option value="inspector_desc">Inspector Z → A</option>
+                  </select>
+                </div>
+              )}
+
               {jobsLoading ? (
                 <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
                   <Loader2 className="w-4 h-4 animate-spin" /> Loading…
@@ -816,18 +879,25 @@ export default function UploadPage() {
                   <div className="flex items-center gap-2 mb-2 px-1">
                     <input
                       type="checkbox"
-                      checked={selectedJobIds.size === jobs.length && jobs.length > 0}
-                      ref={el => { if (el) el.indeterminate = selectedJobIds.size > 0 && selectedJobIds.size < jobs.length; }}
+                      checked={selectedJobIds.size === filteredSortedJobs.length && filteredSortedJobs.length > 0}
+                      ref={el => { if (el) el.indeterminate = selectedJobIds.size > 0 && selectedJobIds.size < filteredSortedJobs.length; }}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
                       aria-label="Select all jobs"
                     />
                     <span className="text-xs text-gray-400">
-                      {selectedJobIds.size > 0 ? `${selectedJobIds.size} of ${jobs.length} selected` : `Select all (${jobs.length})`}
+                      {selectedJobIds.size > 0
+                        ? `${selectedJobIds.size} of ${filteredSortedJobs.length} selected`
+                        : filteredSortedJobs.length < jobs.length
+                          ? `${filteredSortedJobs.length} of ${jobs.length} jobs`
+                          : `Select all (${jobs.length})`}
                     </span>
                   </div>
+                  {filteredSortedJobs.length === 0 && (
+                    <p className="text-xs text-gray-400 py-2 text-center">No jobs match your search.</p>
+                  )}
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 overflow-y-auto max-h-52 pr-0.5">
                     {pagedJobs.map(job => {
                       const isSelected = selectedJobIds.has(job.job_id);
                       return (
@@ -855,7 +925,7 @@ export default function UploadPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                                {job.site_name ?? `Job ${job.job_id.slice(0, 8)}`}
+                                {job.site_name ?? job.site_location ?? `Job ${job.job_id.slice(0, 8)}`}
                               </span>
                               <span className={cn(
                                 "px-2 py-0.5 rounded text-[11px] font-semibold shrink-0",
@@ -871,6 +941,12 @@ export default function UploadPage() {
                               </span>
                               {job.file_count != null && (
                                 <span>{job.file_count} file{job.file_count !== 1 ? "s" : ""}</span>
+                              )}
+                              {job.inspector_name && (
+                                <span className="flex items-center gap-1">
+                                  <User className="w-3 h-3" />
+                                  {toInitials(job.inspector_name)}
+                                </span>
                               )}
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
@@ -920,27 +996,33 @@ export default function UploadPage() {
                 </>
               )}
             </div>
-          </div>
 
-          {/* ── RIGHT COLUMN — Validation Results ──────────────────── */}
+          </div>{/* end left column */}
+
+          {/* ── RIGHT COLUMN — Step 3 ── */}
           <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold shrink-0">3</span>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Review & Proceed</h3>
+            </div>
+
             {!validationResults && !isUploading ? (
-              <div className="h-full flex flex-col items-center justify-center text-center py-24 text-gray-400">
-                <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-                  <CheckCircle2 className="w-8 h-8 text-gray-300" />
+              <div className="flex flex-col items-center justify-center text-center py-16 text-gray-400 bg-white dark:bg-[#161616] rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3">
+                  <CheckCircle2 className="w-6 h-6 text-gray-300" />
                 </div>
-                <p className="font-medium text-gray-500 dark:text-gray-400">Validation results will appear here</p>
-                <p className="text-sm mt-1 text-gray-400">Fill the form, add files, and click Upload & Validate</p>
+                <p className="font-medium text-sm text-gray-500 dark:text-gray-400">Results appear here after validation</p>
+                <p className="text-xs mt-1 text-gray-400">Complete steps 1 &amp; 2, then click Upload &amp; Validate</p>
               </div>
             ) : isUploading ? (
-              <div className="h-full flex flex-col items-center justify-center text-center py-24 gap-4">
-                <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-                <p className="text-gray-500 dark:text-gray-400 font-medium">Validating files…</p>
+              <div className="flex flex-col items-center justify-center text-center py-16 gap-3 bg-white dark:bg-[#161616] rounded-xl border border-gray-200 dark:border-gray-800">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Validating files…</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {/* Filters + Summary */}
-                <div className="bg-white dark:bg-[#161616] rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm space-y-3">
+                <div className="bg-white dark:bg-[#161616] rounded-xl border border-gray-200 dark:border-gray-800 p-3 shadow-sm space-y-2">
                   {/* Row 1: GPS + Blur filters + view toggle */}
                   <div className="flex items-start gap-2">
                     {/* Filters group — wraps internally on narrow viewports */}
@@ -1018,7 +1100,7 @@ export default function UploadPage() {
 
                 {/* Location toolbar — only when files have no GPS */}
                 {eligibleCount > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-white dark:bg-[#161616] rounded-xl border border-gray-200 dark:border-gray-800">
+                  <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-white dark:bg-[#161616] rounded-xl border border-gray-200 dark:border-gray-800">
                     {/* Select-all toggle */}
                     <button
                       onClick={selectedFilenames.size === eligibleCount ? clearSelection : selectAllEligible}
@@ -1161,8 +1243,8 @@ export default function UploadPage() {
                 )}
               </div>
             )}
-          </div>
-        </div>
+          </div>{/* end right column */}
+        </div>{/* end grid */}
       </main>
 
       {/* ── Image Preview Modal ── */}
