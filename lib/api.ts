@@ -37,6 +37,8 @@ export interface ValidationResult {
   reason?: string | null;
   // Set locally after a PATCH /location — backend reflects this on FileStatusItem
   location_label?: string | null;
+  // Set locally after PATCH /override
+  blur_override?: boolean;
 }
 
 export interface FileStatusItem {
@@ -44,8 +46,15 @@ export interface FileStatusItem {
   filename: string;
   status: string;
   laplacian_score?: number;
+  blur_override?: boolean;
   gps_data?: { latitude: number | null; longitude: number | null; altitude?: number | null } | null;
   location_label?: string | null;
+}
+
+export interface FileOverrideResponse {
+  file_id: string;
+  blur_override: boolean;
+  status: string;
 }
 
 export interface LocationUpdateRequest {
@@ -225,6 +234,26 @@ export async function validateFiles(jobId: string, files: File[]): Promise<Valid
     body: formData,
   });
   return handleResponse<ValidationResult[]>(res);
+}
+
+/** PATCH /api/v1/jobs/{job_id}/files/{file_id}/override — accept a blurry file as-is */
+export async function overrideFile(jobId: string, fileId: string): Promise<FileOverrideResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/files/${encodeURIComponent(fileId)}/override`,
+    { method: 'PATCH' },
+  );
+  return handleResponse<FileOverrideResponse>(res);
+}
+
+/** PUT /api/v1/jobs/{job_id}/files/{file_id} — replace a file with a new upload */
+export async function replaceFile(jobId: string, fileId: string, file: File): Promise<ValidationResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/files/${encodeURIComponent(fileId)}`,
+    { method: 'PUT', body: formData },
+  );
+  return handleResponse<ValidationResult>(res);
 }
 
 /** @deprecated use validateFiles instead */

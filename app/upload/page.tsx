@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import {
   createJob,
   validateFiles,
+  overrideFile,
+  replaceFile,
   listJobs,
   deleteJob,
   updateLocation,
@@ -43,6 +45,8 @@ import {
   Plus,
   LayoutList,
   GalleryHorizontal,
+  RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
 
@@ -113,8 +117,9 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [validationResults, setValidationResults] = useState<ValidationResult[] | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [canProceed, setCanProceed] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
+  // fileActionLoading: tracks in-progress override/replace per file_id
+  const [fileActionLoading, setFileActionLoading] = useState<Record<string, 'override' | 'replace'>>({});
 
   // ── Validation filters
   const [gpsFilter, setGpsFilter] = useState<"all" | "with" | "without">("all");
@@ -159,7 +164,6 @@ export default function UploadPage() {
     setFiles([]);
     setSrtMap({});
     setValidationResults(null);
-    setCanProceed(false);
     setUploadError(null);
   }, [mediaType]);
 
@@ -290,7 +294,6 @@ export default function UploadPage() {
       return [...prev, ...valid.filter(f => !existing.has(f.name + f.size))];
     });
     setValidationResults(null);
-    setCanProceed(false);
   }
 
   function removeFile(idx: number) {
@@ -298,7 +301,6 @@ export default function UploadPage() {
     setFiles(prev => prev.filter((_, i) => i !== idx));
     if (removed) setSrtMap(prev => { const n = { ...prev }; delete n[removed.name]; return n; });
     setValidationResults(null);
-    setCanProceed(false);
   }
 
   function attachSrt(videoName: string, srtFile: File) {
@@ -312,6 +314,10 @@ export default function UploadPage() {
   function removeSrt(videoName: string) {
     setSrtMap(prev => { const n = { ...prev }; delete n[videoName]; return n; });
   }
+
+  // Derived: true once at least one file is valid (includes overridden files)
+  const canProceed = !!(validationResults && validationResults.some(r => r.is_valid) && jobId && !isUploading);
+  const replaceAccept = mediaType === "image" ? ".jpg,.jpeg,.png,.bmp,.tiff" : ".mp4,.avi,.mov";
 
   const canUpload =
     siteName.trim().length > 0 &&
@@ -330,8 +336,7 @@ export default function UploadPage() {
       const results = await validateFiles(job.job_id, [...files, ...srtFiles]);
       setValidationResults(results);
       const hasValid = results.some(r => r.is_valid);
-      setCanProceed(hasValid);
-      if (!hasValid) setUploadError("All files failed validation. Please upload different files.");
+      if (!hasValid) setUploadError("All files failed validation. Use 'Proceed Anyway' on individual files or replace them.");
       // Refresh previous jobs list
       loadJobs();
     } catch (e: unknown) {
@@ -348,6 +353,36 @@ export default function UploadPage() {
 
   function handleProceed() {
     if (jobId) router.push(`/preprocess/${encodeURIComponent(jobId)}`);
+  }
+
+  async function handleOverride(fileId: string) {
+    if (!jobId) return;
+    setFileActionLoading(prev => ({ ...prev, [fileId]: 'override' }));
+    try {
+      await overrideFile(jobId, fileId);
+      setValidationResults(prev => prev ? prev.map(r =>
+        r.file_id === fileId ? { ...r, is_valid: true, blur_override: true } : r
+      ) : prev);
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Failed to override file');
+    } finally {
+      setFileActionLoading(prev => { const n = { ...prev }; delete n[fileId]; return n; });
+    }
+  }
+
+  async function handleReplace(fileId: string, newFile: File) {
+    if (!jobId) return;
+    setFileActionLoading(prev => ({ ...prev, [fileId]: 'replace' }));
+    try {
+      const result = await replaceFile(jobId, fileId, newFile);
+      setValidationResults(prev => prev ? prev.map(r =>
+        r.file_id === fileId ? { ...result, file_id: fileId } : r
+      ) : prev);
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Failed to replace file');
+    } finally {
+      setFileActionLoading(prev => { const n = { ...prev }; delete n[fileId]; return n; });
+    }
   }
 
   // ── Location helpers ─────────────────────────────────────────────────────────
@@ -1056,10 +1091,15 @@ export default function UploadPage() {
                       isSelected={selectedFilenames.has(r.filename)}
                       displayCoords={displayCoords}
                       locationLabel={r.location_label ?? null}
+                      replaceAccept={replaceAccept}
+                      overrideLoading={fileActionLoading[r.file_id ?? ''] === 'override'}
+                      replaceLoading={fileActionLoading[r.file_id ?? ''] === 'replace'}
                       onPrev={() => setCarouselIndex(i => Math.max(0, i - 1))}
                       onNext={() => setCarouselIndex(i => Math.min(filteredResults.length - 1, i + 1))}
                       onToggleSelect={isNoGps ? () => toggleSelectFilename(r.filename) : undefined}
                       onSetLocation={isNoGps ? () => { setModalCtx(r.filename); setSaveError(null); setSaveSuccess(null); } : undefined}
+                      onOverride={r.file_id && !r.is_valid ? () => handleOverride(r.file_id!) : undefined}
+                      onReplace={r.file_id && !r.is_valid ? (file) => handleReplace(r.file_id!, file) : undefined}
                     />
                   );
                 })() : (
@@ -1083,9 +1123,14 @@ export default function UploadPage() {
                             isSelected={isSelected}
                             displayCoords={displayCoords}
                             locationLabel={locationLabel}
+                            replaceAccept={replaceAccept}
+                            overrideLoading={fileActionLoading[r.file_id ?? ''] === 'override'}
+                            replaceLoading={fileActionLoading[r.file_id ?? ''] === 'replace'}
                             onPreview={() => setPreviewFilename(r.filename)}
                             onToggleSelect={isNoGps ? () => toggleSelectFilename(r.filename) : undefined}
                             onSetLocation={isNoGps ? () => { setModalCtx(r.filename); setSaveError(null); setSaveSuccess(null); } : undefined}
+                            onOverride={r.file_id && !r.is_valid ? () => handleOverride(r.file_id!) : undefined}
+                            onReplace={r.file_id && !r.is_valid ? (file) => handleReplace(r.file_id!, file) : undefined}
                           />
                         );
                       })}
@@ -1232,20 +1277,31 @@ function FileResultCard({
   isSelected = false,
   displayCoords = null,
   locationLabel = null,
+  replaceAccept = ".jpg,.jpeg,.png,.bmp,.tiff",
+  overrideLoading = false,
+  replaceLoading = false,
   onPreview,
   onToggleSelect,
   onSetLocation,
+  onOverride,
+  onReplace,
 }: {
   result: ValidationResult;
   isNoGps?: boolean;
   isSelected?: boolean;
   displayCoords?: { lat: number; lng: number } | null;
   locationLabel?: string | null;
+  replaceAccept?: string;
+  overrideLoading?: boolean;
+  replaceLoading?: boolean;
   onPreview: () => void;
   onToggleSelect?: () => void;
   onSetLocation?: () => void;
+  onOverride?: () => void;
+  onReplace?: (file: File) => void;
 }) {
   const isLowQuality = result.laplacian_score < result.blur_threshold;
+  const isActing = overrideLoading || replaceLoading;
   return (
     <div
       onClick={onToggleSelect ?? onPreview}
@@ -1268,9 +1324,11 @@ function FileResultCard({
               : <Square className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />}
           </div>
         ) : (
-          result.is_valid
-            ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            : <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+          result.blur_override
+            ? <ShieldCheck className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            : result.is_valid
+              ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              : <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
         )}
 
         <span
@@ -1285,15 +1343,21 @@ function FileResultCard({
           <span className="text-gray-300 dark:text-gray-700">/{result.blur_threshold.toFixed(1)}</span>
         </span>
 
-        <span className={cn(
-          "shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold",
-          isLowQuality
-            ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-        )}>
-          {isLowQuality && <AlertTriangle className="w-2.5 h-2.5" />}
-          {isLowQuality ? "Low" : "High"}
-        </span>
+        {result.blur_override ? (
+          <span className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+            <ShieldCheck className="w-2.5 h-2.5" /> Overridden
+          </span>
+        ) : (
+          <span className={cn(
+            "shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold",
+            isLowQuality
+              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+          )}>
+            {isLowQuality && <AlertTriangle className="w-2.5 h-2.5" />}
+            {isLowQuality ? "Low" : "High"}
+          </span>
+        )}
 
         {isNoGps ? (
           <>
@@ -1327,6 +1391,51 @@ function FileResultCard({
           {result.reason}
         </p>
       )}
+
+      {/* Action buttons for invalid files */}
+      {!result.is_valid && (onOverride || onReplace) && (
+        <div className="mt-1.5 pl-5 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+          {onOverride && (
+            <button
+              onClick={() => onOverride()}
+              disabled={isActing}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-50 transition cursor-pointer"
+            >
+              {overrideLoading
+                ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                : <ShieldCheck className="w-2.5 h-2.5" />}
+              Proceed Anyway
+            </button>
+          )}
+          {onReplace && (
+            <label
+              onClick={e => e.stopPropagation()}
+              className={cn(
+                "flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition",
+                isActing
+                  ? "bg-blue-50 text-blue-400 dark:bg-blue-950/20 dark:text-blue-600 opacity-50 cursor-not-allowed"
+                  : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 cursor-pointer"
+              )}
+            >
+              <input
+                type="file"
+                accept={replaceAccept}
+                className="hidden"
+                disabled={isActing}
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) onReplace(f);
+                  e.target.value = "";
+                }}
+              />
+              {replaceLoading
+                ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                : <RefreshCw className="w-2.5 h-2.5" />}
+              Replace
+            </label>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1341,10 +1450,15 @@ function CarouselResultView({
   isSelected,
   displayCoords,
   locationLabel,
+  replaceAccept = ".jpg,.jpeg,.png,.bmp,.tiff",
+  overrideLoading = false,
+  replaceLoading = false,
   onPrev,
   onNext,
   onToggleSelect,
   onSetLocation,
+  onOverride,
+  onReplace,
 }: {
   result: ValidationResult;
   index: number;
@@ -1353,10 +1467,15 @@ function CarouselResultView({
   isSelected: boolean;
   displayCoords: { lat: number; lng: number } | null;
   locationLabel: string | null;
+  replaceAccept?: string;
+  overrideLoading?: boolean;
+  replaceLoading?: boolean;
   onPrev: () => void;
   onNext: () => void;
   onToggleSelect?: () => void;
   onSetLocation?: () => void;
+  onOverride?: () => void;
+  onReplace?: (file: File) => void;
 }) {
   const [imgLoading, setImgLoading] = useState(true);
   const imageUrl = result.original_path
@@ -1408,14 +1527,18 @@ function CarouselResultView({
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn(
             "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold",
-            result.is_valid
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-              : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+            result.blur_override
+              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              : result.is_valid
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
           )}>
-            {result.is_valid
-              ? <CheckCircle2 className="w-3 h-3" />
-              : <XCircle className="w-3 h-3" />}
-            {result.is_valid ? "Valid" : "Invalid"}
+            {result.blur_override
+              ? <ShieldCheck className="w-3 h-3" />
+              : result.is_valid
+                ? <CheckCircle2 className="w-3 h-3" />
+                : <XCircle className="w-3 h-3" />}
+            {result.blur_override ? "Override accepted" : result.is_valid ? "Valid" : "Invalid"}
           </span>
           <span className={cn(
             "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold",
@@ -1496,6 +1619,48 @@ function CarouselResultView({
           <p className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-3 py-2">
             {result.reason}
           </p>
+        )}
+
+        {/* Action buttons for invalid files */}
+        {!result.is_valid && (onOverride || onReplace) && (
+          <div className="flex items-center gap-3">
+            {onOverride && (
+              <button
+                onClick={onOverride}
+                disabled={overrideLoading || replaceLoading}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-50 transition cursor-pointer"
+              >
+                {overrideLoading
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <ShieldCheck className="w-3.5 h-3.5" />}
+                Proceed Anyway
+              </button>
+            )}
+            {onReplace && (
+              <label className={cn(
+                "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition",
+                overrideLoading || replaceLoading
+                  ? "bg-blue-50 text-blue-400 dark:bg-blue-950/20 dark:text-blue-600 opacity-50 cursor-not-allowed"
+                  : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 cursor-pointer"
+              )}>
+                <input
+                  type="file"
+                  accept={replaceAccept}
+                  className="hidden"
+                  disabled={overrideLoading || replaceLoading}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) onReplace(f);
+                    e.target.value = "";
+                  }}
+                />
+                {replaceLoading
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <RefreshCw className="w-3.5 h-3.5" />}
+                Replace File
+              </label>
+            )}
+          </div>
         )}
       </div>
 
