@@ -154,6 +154,17 @@ export default function ResultPage() {
   const [remarksChangedAfterReport, setRemarksChangedAfterReport] = useState(false);
   const remarkDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Confidence threshold
+  const [confThreshold, setConfThreshold] = useState(0.20);
+  const confDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync conf_threshold from API response whenever detectData changes
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const threshold = (detectData as any)?.conf_threshold;
+    if (threshold != null) setConfThreshold(threshold);
+  }, [detectData]);
+
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -332,13 +343,14 @@ export default function ResultPage() {
     tick();
   }
 
-  async function runDetection() {
+  async function runDetection(conf?: number) {
     setIsRunning(true);
     setHasRun(false);
     setError(null);
     try {
+      const confParam = conf !== undefined ? `?conf=${conf}` : '';
       const res = await fetch(
-        `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/detect`,
+        `${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(jobId)}/detect${confParam}`,
         { method: "POST" }
       );
       if (!mountedRef.current) return;
@@ -351,6 +363,12 @@ export default function ResultPage() {
       setError(e instanceof Error ? e.message : "Detection failed");
       setIsRunning(false);
     }
+  }
+
+  function handleConfChange(val: number) {
+    setConfThreshold(val);
+    if (confDebounceRef.current) clearTimeout(confDebounceRef.current);
+    confDebounceRef.current = setTimeout(() => runDetection(val), 600);
   }
 
   // ── Report generation ───────────────────────────────────────────────────────
@@ -810,6 +828,25 @@ export default function ResultPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Confidence threshold slider */}
+                <div className="flex items-center gap-3 w-full">
+                  <span className="text-gray-500 dark:text-gray-400 text-sm uppercase tracking-wider shrink-0">Conf</span>
+                  <input
+                    type="range"
+                    min={0.01}
+                    max={1.0}
+                    step={0.01}
+                    value={confThreshold}
+                    disabled={isRunning}
+                    onChange={e => handleConfChange(parseFloat(e.target.value))}
+                    className="flex-1 accent-blue-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  <span className="text-xs font-mono text-gray-600 dark:text-gray-300 w-8 tabular-nums">
+                    {confThreshold.toFixed(2)}
+                  </span>
+                  {isRunning && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500 shrink-0" />}
+                </div>
 
                 {/* Overlay toggles + class pills — hidden for video jobs */}
                 {!isVideoJob && viewMode === "images" && (

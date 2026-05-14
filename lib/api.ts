@@ -128,6 +128,7 @@ export interface DetectResponse {
     peeling: number;
     algae: number;
   };
+  conf_threshold?: number;
 }
 
 export interface ReportDefect {
