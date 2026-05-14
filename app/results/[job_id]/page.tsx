@@ -157,6 +157,8 @@ export default function ResultPage() {
   // Confidence threshold
   const [confThreshold, setConfThreshold] = useState(0.20);
   const confDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [confInputStr, setConfInputStr] = useState('0.20');
+  const confFocusedRef = useRef(false);
 
   // Sync conf_threshold from API response whenever detectData changes
   useEffect(() => {
@@ -164,6 +166,11 @@ export default function ResultPage() {
     const threshold = (detectData as any)?.conf_threshold;
     if (threshold != null) setConfThreshold(threshold);
   }, [detectData]);
+
+  // Keep display string in sync when threshold changes externally (slider / API)
+  useEffect(() => {
+    if (!confFocusedRef.current) setConfInputStr(confThreshold.toFixed(2));
+  }, [confThreshold]);
 
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -793,8 +800,8 @@ export default function ResultPage() {
           {/* Main Image Viewer */}
           <div className="flex-1 min-w-0 bg-gray-100 dark:bg-gray-900 flex flex-col">
             {/* Overlay Controls */}
-            <div className="flex justify-center pt-4 md:pt-6 px-4 md:px-8">
-              <div className="bg-white/90 backdrop-blur-sm border border-gray-200 dark:bg-gray-950/90 dark:border-gray-700 rounded-lg px-6 py-3 flex flex-col gap-3">
+            <div className="flex justify-center pt-4 md:pt-6 px-4 md:px-6">
+              <div className="bg-white/90 backdrop-blur-sm border border-gray-200 dark:bg-gray-950/90 dark:border-gray-700 rounded-lg px-4 sm:px-6 py-3 flex flex-col gap-3 w-full max-w-2xl">
 
                 {/* Video / Images toggle — shown only for video jobs */}
                 {isVideoJob && (
@@ -840,11 +847,34 @@ export default function ResultPage() {
                     value={confThreshold}
                     disabled={isRunning}
                     onChange={e => handleConfChange(parseFloat(e.target.value))}
-                    className="flex-1 accent-blue-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                    className="flex-1 min-w-0 accent-blue-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                   />
-                  <span className="text-xs font-mono text-gray-600 dark:text-gray-300 w-8 tabular-nums">
-                    {confThreshold.toFixed(2)}
-                  </span>
+                  <input
+                    type="number"
+                    min={0.01}
+                    max={1.0}
+                    step={0.01}
+                    value={confInputStr}
+                    disabled={isRunning}
+                    onFocus={() => { confFocusedRef.current = true; }}
+                    onChange={e => {
+                      setConfInputStr(e.target.value);
+                      const raw = parseFloat(e.target.value);
+                      if (!isNaN(raw) && raw >= 0.01 && raw <= 1.0) {
+                        handleConfChange(Math.round(raw * 100) / 100);
+                      }
+                    }}
+                    onBlur={e => {
+                      confFocusedRef.current = false;
+                      const raw = parseFloat(e.target.value);
+                      const val = isNaN(raw) ? confThreshold : Math.max(0.01, Math.min(1.0, Math.round(raw * 100) / 100));
+                      setConfInputStr(val.toFixed(2));
+                      setConfThreshold(val);
+                      if (confDebounceRef.current) clearTimeout(confDebounceRef.current);
+                      runDetection(val);
+                    }}
+                    className="w-14 shrink-0 px-2 py-1 rounded-lg text-xs text-center border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition disabled:opacity-50 disabled:cursor-not-allowed tabular-nums"
+                  />
                   {isRunning && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500 shrink-0" />}
                 </div>
 
