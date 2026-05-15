@@ -1,15 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
 import {
   detectJob,
+  getDetectResults,
   generateReport,
   type Detection,
+  API_BASE_URL,
 } from "@/lib/api";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://viscrete-core.shares.zrok.io";
+import {
+  ArrowLeft,
+  Loader2,
+  AlertCircle,
+  FileText,
+  AlertTriangle,
+  ImageIcon,
+} from "lucide-react";
 
 // Actual API shape (api.ts DetectResponse is outdated — flat, not per-file array)
 interface DetectResponse {
@@ -19,14 +26,16 @@ interface DetectResponse {
   detections: Detection[];
   annotated_paths: string[];
 }
-import {
-  ArrowLeft,
-  Loader2,
-  AlertCircle,
-  FileText,
-  AlertTriangle,
-  ImageIcon,
-} from "lucide-react";
+
+const REDIRECT_STATUSES = new Set(["detected", "reporting", "completed"]);
+const POLL_INTERVAL_MS = 10_000;
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -38,13 +47,48 @@ export default function DetectPage() {
   const [hasRun, setHasRun] = useState(false);
   const [result, setResult] = useState<DetectResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [isVideo, setIsVideo] = useState(false);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://viscrete-core.shares.zrok.io";
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const REDIRECT_STATUSES = new Set(["detected", "reporting", "completed"]);
+  function startTimer() {
+    setElapsed(0);
+    timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+  }
+
+  function stopTimers() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }
+
+  // Poll job status until "detected", then fetch cached results
+  function startPolling() {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`);
+        if (!res.ok) return;
+        const job = await res.json();
+        if (job.status === "detected" || job.status === "reporting" || job.status === "completed") {
+          stopTimers();
+          const data = await getDetectResults(job_id) as unknown as DetectResponse;
+          setResult(data);
+          setHasRun(true);
+          setIsRunning(false);
+        } else if (job.status === "failed") {
+          stopTimers();
+          setError("Detection failed on the server.");
+          setIsRunning(false);
+        }
+      } catch {
+        // transient network error — keep polling
+      }
+    }, POLL_INTERVAL_MS);
+  }
 
   // Check job status first, then run detection or redirect
   useEffect(() => {
@@ -53,8 +97,16 @@ export default function DetectPage() {
         const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${encodeURIComponent(job_id)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const job = await res.json();
+        if (job.input_type === "video") setIsVideo(true);
         if (REDIRECT_STATUSES.has(job.status)) {
           router.replace(`/results/${encodeURIComponent(job_id)}`);
+          return;
+        }
+        // Already detecting (e.g. page reload mid-inference) — skip POST, just poll
+        if (job.status === "detecting") {
+          setIsRunning(true);
+          startTimer();
+          startPolling();
           return;
         }
       } catch {
@@ -63,24 +115,35 @@ export default function DetectPage() {
       runDetection();
     }
     init();
+    return () => stopTimers();
   }, []);
 
   async function runDetection() {
     setIsRunning(true);
     setHasRun(false);
     setError(null);
+    startTimer();
     try {
       const data = await detectJob(job_id) as unknown as DetectResponse;
+      stopTimers();
       setResult(data);
       setHasRun(true);
     } catch (e: unknown) {
-      if (e instanceof Error && e.message.includes("404")) {
+      const msg = e instanceof Error ? e.message : "Detection failed";
+      // 409 means inference is already running in the backend — switch to polling
+      if (msg.includes("409") || msg.toLowerCase().includes("already")) {
+        startPolling();
+        return;
+      }
+      stopTimers();
+      if (msg.includes("404")) {
         setError("Job not found.");
       } else {
-        setError(e instanceof Error ? e.message : "Detection failed");
+        setError(msg);
       }
     } finally {
-      setIsRunning(false);
+      // Only clear running state on terminal outcomes; polling keeps it true
+      if (!pollRef.current) setIsRunning(false);
     }
   }
 
@@ -140,8 +203,15 @@ export default function DetectPage() {
         {isRunning && (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-gray-400">
             <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-            <p className="font-medium">Running YOLOv11 inference…</p>
-            <p className="text-sm text-gray-400">This may take a moment</p>
+            <p className="font-medium text-gray-700 dark:text-gray-300">
+              Running YOLOv11 inference…{" "}
+              <span className="font-mono text-blue-500">({formatElapsed(elapsed)})</span>
+            </p>
+            {isVideo ? (
+              <p className="text-sm text-gray-400">Video inference typically takes 2–5 minutes</p>
+            ) : (
+              <p className="text-sm text-gray-400">This may take a moment</p>
+            )}
           </div>
         )}
 
